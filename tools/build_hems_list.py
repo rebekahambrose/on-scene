@@ -35,10 +35,17 @@ def main():
         data = urllib.request.urlopen(req, timeout=600).read()
     with zipfile.ZipFile(io.BytesIO(data)) as z:
         text = z.read("MASTER.txt").decode("utf-8-sig", errors="replace")
+        ref_text = z.read("ACFTREF.txt").decode("utf-8-sig", errors="replace")
+    ref_rows = csv.reader(io.StringIO(ref_text))
+    ref_head = [h.strip() for h in next(ref_rows)]
+    rc = {h: i for i, h in enumerate(ref_head)}
+    models = {r[rc["CODE"]].strip(): f"{r[rc['MFR']].strip().title()} {r[rc['MODEL']].strip()}"
+              for r in ref_rows if len(r) > rc["MODEL"]}
+
     rows = csv.reader(io.StringIO(text))
     head = [h.strip() for h in next(rows)]
     col = {h: i for i, h in enumerate(head)}
-    hexes = set()
+    fleet = {}
     for row in rows:
         if len(row) < len(head) - 1 or row[col["TYPE AIRCRAFT"]].strip() != "6":
             continue
@@ -46,9 +53,13 @@ def main():
         if OWNER.search(owner):
             code = row[col["MODE S CODE HEX"]].strip().lower()
             if code:
-                hexes.add(code)
-    OUT.write_text(json.dumps(sorted(hexes)))
-    print(f"{len(hexes)} air-ambulance helicopters written to {OUT}")
+                fleet[code] = {
+                    "reg": "N" + row[col["N-NUMBER"]].strip(),
+                    "model": models.get(row[col["MFR MDL CODE"]].strip(), "Helicopter"),
+                    "operator": owner.title().replace("Llc", "LLC").replace("Inc", "Inc."),
+                }
+    OUT.write_text(json.dumps(fleet, sort_keys=True, separators=(",", ":")))
+    print(f"{len(fleet)} air-ambulance helicopters written to {OUT}")
 
 
 if __name__ == "__main__":

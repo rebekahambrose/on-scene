@@ -78,17 +78,24 @@ def main():
                                         "place": place, **{g: by[g] for g in GROUPS}}})
 
     # --- aircraft ---
-    heli, err = run(aircraft.helicopters, now)
+    heli, err = run(lambda t: aircraft.helicopters(t, previous), now)
     heli = heli or []
-    sources.append(status("air-ambulance", "Air-ambulance helicopters (adsb.lol)", "United States", "aircraft",
-                          "~1 km", "https://www.adsb.lol/", len(heli), err))
+    sources.append(status("air-ambulance", "Air-ambulance helicopters (adsb.lol + FAA registry)", "United States",
+                          "aircraft", "~1 km", "https://www.adsb.lol/", len(heli), err))
     emerg, err = run(aircraft.emergencies, now)
     if emerg is None and err is None:  # skipped this cycle to respect the rate limit: keep the last result
-        emerg = [{"lon": f["geometry"]["coordinates"][0], "lat": f["geometry"]["coordinates"][1], **f["properties"]}
+        old_paths = {f["properties"]["id"]: f["geometry"]["coordinates"]
+                     for f in previous.get("tracks", {}).get("features", []) if f["properties"].get("kind") == "emergency"}
+        emerg = [{"lon": f["geometry"]["coordinates"][0], "lat": f["geometry"]["coordinates"][1], **f["properties"],
+                  "path": old_paths.get(f["properties"].get("id"), [])}
                  for f in previous.get("emergency_aircraft", {}).get("features", [])]
     emerg = emerg or []
-    sources.append(status("squawk-7700", "Aircraft declaring an emergency (adsb.lol)", "Worldwide", "aircraft",
-                          "~1 km", "https://www.adsb.lol/", len(emerg), err))
+    sources.append(status("squawk-7700", "Aircraft declaring an emergency (adsb.lol, OpenSky, hexdb.io)", "Worldwide",
+                          "aircraft", "exact", "https://www.adsb.lol/", len(emerg), err))
+    tracks = [{"type": "Feature", "geometry": {"type": "LineString", "coordinates": h["trail"]},
+               "properties": {"id": h["id"], "kind": "heli"}} for h in heli if len(h["trail"]) > 1]
+    tracks += [{"type": "Feature", "geometry": {"type": "LineString", "coordinates": e["path"] + [[e["lon"], e["lat"]]]},
+                "properties": {"id": e["id"], "kind": "emergency"}} for e in emerg if e.get("path")]
 
     # --- weather and hazards ---
     wx, err = run(weather.alerts, now)
@@ -117,8 +124,10 @@ def main():
         "window_minutes": int(dispatch.WINDOW.total_seconds() // 60),
         "sources": sources,
         "dispatch": {"type": "FeatureCollection", "features": features},
-        "aircraft": points(heli, ("alt", "track", "type")),
-        "emergency_aircraft": points(emerg, ("alt", "track", "type")),
+        "aircraft": points(heli, ("id", "alt", "speed", "track", "reg", "model", "operator", "trail")),
+        "emergency_aircraft": points(emerg, ("id", "alt", "speed", "track", "callsign", "reg", "model", "operator",
+                                             "origin", "since")),
+        "tracks": {"type": "FeatureCollection", "features": tracks},
         "alerts": {"type": "FeatureCollection", "features": wx},
         "hazards": points(hz, ("kind", "title", "detail")),
         "sideline": {"week": nfl["week"], "teams": nfl["teams"]},
