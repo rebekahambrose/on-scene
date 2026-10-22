@@ -4,32 +4,43 @@ Only helicopters on the FAA-derived air-ambulance list are kept. To avoid
 pointing at an emergency scene, positions are rounded to about 1 km and an
 aircraft is dropped once it is below 1,000 ft (landing or on the ground).
 Tail numbers are not published.
+
+adsb.lol allows 500 requests a day per address, so the whole list goes in one
+request (288 a day at a 5-minute schedule).
 """
 import json
+import time
+import urllib.error
 from pathlib import Path
 
 from collectors.common import get_json
 
-HEMS = set(json.loads((Path(__file__).parent / "hems.json").read_text()))
-# ICAO type codes common in US air-medical fleets.
-TYPES = ["EC35", "EC45", "B407", "B429", "AS50", "AS65", "A109", "A119", "A169", "A139", "S76", "BK17", "EC30", "B412", "EC55"]
+HEMS = sorted(json.loads((Path(__file__).parent / "hems.json").read_text()))
 MIN_ALT_FT = 1000
 
 
+def _fetch():
+    url = "https://api.adsb.lol/v2/hex/" + ",".join(HEMS)
+    try:
+        return get_json(url)
+    except urllib.error.HTTPError as e:
+        if e.code != 429:
+            raise
+        time.sleep(3)  # rate limited: wait once, then try again
+        return get_json(url)
+
+
 def helicopters(now):
-    seen = {}
-    for t in TYPES:
-        for a in get_json(f"https://api.adsb.lol/v2/type/{t}").get("ac", []):
-            if a.get("hex", "").lower() not in HEMS or "lat" not in a:
-                continue
-            alt = a.get("alt_baro")
-            if not isinstance(alt, (int, float)) or alt < MIN_ALT_FT:
-                continue
-            seen[a["hex"]] = {
-                "lat": round(a["lat"], 2),
-                "lon": round(a["lon"], 2),
-                "alt": int(round(alt, -2)),
-                "track": int(a.get("track") or 0),
-                "type": t,
-            }
-    return list(seen.values())
+    out = []
+    for a in _fetch().get("ac", []):
+        alt = a.get("alt_baro")
+        if "lat" not in a or not isinstance(alt, (int, float)) or alt < MIN_ALT_FT:
+            continue
+        out.append({
+            "lat": round(a["lat"], 2),
+            "lon": round(a["lon"], 2),
+            "alt": int(round(alt, -2)),
+            "track": int(a.get("track") or 0),
+            "type": a.get("t") or "Helicopter",
+        })
+    return out
