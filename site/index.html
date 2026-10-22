@@ -1,0 +1,250 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>On Scene</title>
+<meta name="description" content="A live map of emergency response across the US, built only from public data and aggregated for privacy.">
+<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: the map is the page. One floating panel holds the name, layers, sources and notes. */
+:root {
+  --bg: #f4f6f6; --panel: rgba(255, 255, 255, 0.94); --line: #d9e0e2; --fg: #152025; --muted: #5b6b71;
+  --accent: #b86e0b; --ok: #0f7a4d; --down: #b3412a;
+  --medical: #e0901c; --traffic: #2f8fd0; --fire: #d9473a; --rescue: #8f6ad8; --other: #7d8b90; --air: #c2185b;
+  --display: "Barlow Condensed", "Arial Narrow", system-ui, sans-serif;
+  --body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0c1317; --panel: rgba(18, 28, 33, 0.94); --line: #263740; --fg: #dde6e8; --muted: #8fa0a6;
+    --accent: #f2a93b; --ok: #4cc38a; --down: #ef7a5f;
+    --medical: #f2a93b; --traffic: #5db3e6; --fire: #ee5a4b; --rescue: #b28cf0; --other: #8a989d; --air: #f06292;
+    color-scheme: dark;
+  }
+}
+html, body { height: 100%; margin: 0; }
+body { background: var(--bg); color: var(--fg); font: 14px/1.45 var(--body); }
+#map { position: fixed; inset: 0; }
+
+.panel {
+  position: fixed; z-index: 2; top: calc(12px + env(safe-area-inset-top, 0px)); left: calc(12px + env(safe-area-inset-left, 0px));
+  width: 320px; max-height: calc(100% - 24px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)); overflow: auto;
+  background: var(--panel); backdrop-filter: blur(8px); border: 1px solid var(--line); border-radius: 10px;
+  box-shadow: 0 8px 28px rgb(0 0 0 / 0.18);
+}
+@media (max-width: 600px) {
+  .panel { top: auto; left: 8px; right: 8px; bottom: calc(8px + env(safe-area-inset-bottom, 0px)); width: auto; max-height: 48%; }
+}
+.panel > * { padding: 12px 14px; border-bottom: 1px solid var(--line); }
+.panel > *:last-child { border-bottom: 0; }
+.brand { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+h1 { margin: 0; font: 700 30px/1 var(--display); letter-spacing: 0.03em; text-transform: uppercase; }
+h1 span { color: var(--accent); }
+.updated { font: 12px var(--mono); color: var(--muted); text-align: right; }
+.updated b { color: var(--fg); font-weight: 500; }
+.tag { margin: 6px 0 0; color: var(--muted); font-size: 13px; }
+h2 { margin: 0 0 8px; font: 600 13px var(--display); letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
+
+.layers { display: grid; gap: 6px; }
+.layer { display: grid; grid-template-columns: auto 14px 1fr auto; align-items: center; gap: 8px; cursor: pointer; }
+.layer input { margin: 0; accent-color: var(--accent); }
+.swatch { width: 14px; height: 14px; border-radius: 3px; }
+.layer .n { font: 13px var(--mono); color: var(--muted); font-variant-numeric: tabular-nums; }
+.key { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 8px; font-size: 12px; color: var(--muted); }
+.key span { display: inline-flex; align-items: center; gap: 5px; }
+.key i { width: 9px; height: 9px; border-radius: 2px; display: block; }
+
+button.locate { width: 100%; font: 600 14px var(--body); color: var(--fg); background: transparent; border: 1px solid var(--line); border-radius: 6px; padding: 8px; cursor: pointer; }
+button.locate:hover { border-color: var(--accent); }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+details summary { cursor: pointer; font: 600 13px var(--display); letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
+.sources { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 5px; font-size: 13px; }
+.sources li { display: grid; grid-template-columns: 8px minmax(0, 1fr) auto; gap: 8px; align-items: center; }
+.sources .dot { width: 8px; height: 8px; border-radius: 50%; }
+.sources a { color: inherit; }
+.sources .n { font: 12px var(--mono); color: var(--muted); }
+.notes p { margin: 0 0 6px; font-size: 12.5px; color: var(--muted); }
+.notes p:last-child { margin: 0; }
+.notes b { color: var(--fg); }
+
+.maplibregl-popup-content { background: var(--panel); color: var(--fg); border-radius: 8px; font: 13px var(--body); padding: 10px 12px; box-shadow: 0 6px 20px rgb(0 0 0 / 0.2); }
+.maplibregl-popup-tip { display: none; }
+.pop b { display: block; font: 700 16px var(--display); letter-spacing: 0.03em; text-transform: uppercase; margin-bottom: 4px; }
+.pop .row { display: flex; justify-content: space-between; gap: 16px; font-family: var(--mono); font-size: 12px; }
+.pop small { display: block; color: var(--muted); margin-top: 6px; }
+</style>
+</head>
+<body>
+<div id="map" role="region" aria-label="Map of live emergency response"></div>
+
+<aside class="panel">
+  <div>
+    <div class="brand">
+      <h1>On <span>Scene</span></h1>
+      <div class="updated" id="updated">Loading…</div>
+    </div>
+    <p class="tag">Emergency response across the US, live from public data.</p>
+  </div>
+
+  <div>
+    <h2>Layers</h2>
+    <div class="layers">
+      <label class="layer" for="l-dispatch"><input type="checkbox" id="l-dispatch" checked><span class="swatch" style="background:var(--medical)"></span><span>911 dispatches</span><span class="n" id="n-dispatch">–</span></label>
+      <label class="layer" for="l-air"><input type="checkbox" id="l-air" checked><span class="swatch" style="background:var(--air);border-radius:50%"></span><span>Air ambulances in flight</span><span class="n" id="n-air">–</span></label>
+      <label class="layer" for="l-alerts"><input type="checkbox" id="l-alerts" checked><span class="swatch" style="background:transparent;border:2px solid var(--fire)"></span><span>Weather warnings</span><span class="n" id="n-alerts">–</span></label>
+    </div>
+    <div class="key">
+      <span><i style="background:var(--medical)"></i>Medical</span><span><i style="background:var(--traffic)"></i>Traffic</span>
+      <span><i style="background:var(--fire)"></i>Fire</span><span><i style="background:var(--rescue)"></i>Rescue</span><span><i style="background:var(--other)"></i>Other</span>
+    </div>
+  </div>
+
+  <div><button class="locate" id="locate" type="button">Show my area</button></div>
+
+  <div>
+    <details id="src-details">
+      <summary>Sources (<span id="src-ok">–</span>)</summary>
+      <ul class="sources" id="sources"></ul>
+    </details>
+  </div>
+
+  <div class="notes">
+    <p><b>Privacy.</b> Calls are grouped into hexes about 800 m across, or counted by town where a source gives no location. No addresses, names or exact times are kept. Helicopter positions are rounded to about 1 km and hidden below 1,000 ft.</p>
+    <p><b>What this shows.</b> Dispatches are calls for help, not confirmed injuries. Hexes cover the past 2 hours or calls still active.</p>
+    <p><b>Not an emergency service.</b> In an emergency, call 911.</p>
+  </div>
+</aside>
+
+<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+<script>
+// Where the bot publishes its data. Local previews read the copy next to this page.
+const REMOTE_DATA = "https://raw.githubusercontent.com/rebekahambrose/on-scene/data/live.json";
+const LOCAL = ["localhost", "127.0.0.1", ""].includes(location.hostname);
+const DATA_URL = LOCAL ? "data/live.json" : REMOTE_DATA;
+const REFRESH_MS = 60_000;
+
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const dark = matchMedia("(prefers-color-scheme: dark)").matches;
+const GROUPS = ["medical", "traffic", "fire", "rescue", "other"];
+const LABEL = { medical: "Medical", traffic: "Traffic", fire: "Fire", rescue: "Rescue", other: "Other" };
+const colorBy = ["match", ["get", "top"], ...GROUPS.flatMap(g => [g, css("--" + g)]), css("--other")];
+
+const map = new maplibregl.Map({
+  container: "map",
+  style: `https://tiles.openfreemap.org/styles/${dark ? "dark" : "positron"}`,
+  center: [-96, 38.5], zoom: 3.6, minZoom: 2.5, maxZoom: 14,
+  attributionControl: { compact: true, customAttribution: "Dispatch data: city and county open data · Aircraft: <a href='https://www.adsb.lol/'>adsb.lol</a> (ODbL) · Weather: NWS" },
+});
+map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
+
+const empty = { type: "FeatureCollection", features: [] };
+let sourcesById = {};
+
+map.on("load", () => {
+  map.addSource("alerts", { type: "geojson", data: empty });
+  map.addSource("dispatch", { type: "geojson", data: empty });
+  map.addSource("aircraft", { type: "geojson", data: empty });
+
+  map.addLayer({ id: "alerts-fill", type: "fill", source: "alerts", paint: { "fill-color": css("--fire"), "fill-opacity": 0.06 } });
+  map.addLayer({ id: "alerts-line", type: "line", source: "alerts", paint: { "line-color": css("--fire"), "line-width": 1.2, "line-opacity": 0.6 } });
+
+  map.addLayer({ id: "hex", type: "fill", source: "dispatch", filter: ["==", ["geometry-type"], "Polygon"],
+    paint: { "fill-color": colorBy, "fill-opacity": ["interpolate", ["linear"], ["get", "n"], 1, 0.45, 4, 0.75, 8, 0.9] } });
+  map.addLayer({ id: "hex-glow", type: "circle", source: "dispatch", filter: ["==", ["geometry-type"], "Polygon"], maxzoom: 9,
+    paint: { "circle-radius": ["interpolate", ["linear"], ["zoom"], 3, 3, 8, 6], "circle-color": colorBy, "circle-opacity": 0.9 } });
+  map.addLayer({ id: "area", type: "circle", source: "dispatch", filter: ["==", ["geometry-type"], "Point"],
+    paint: { "circle-radius": ["interpolate", ["linear"], ["get", "n"], 1, 7, 10, 14, 50, 26], "circle-color": colorBy,
+             "circle-opacity": 0.35, "circle-stroke-color": colorBy, "circle-stroke-width": 1.5 } });
+  map.addLayer({ id: "area-count", type: "symbol", source: "dispatch", filter: ["==", ["geometry-type"], "Point"], minzoom: 6,
+    layout: { "text-field": ["to-string", ["get", "n"]], "text-size": 12, "text-font": ["Noto Sans Bold"] },
+    paint: { "text-color": css("--fg") } });
+
+  map.addLayer({ id: "air", type: "circle", source: "aircraft",
+    paint: { "circle-radius": ["interpolate", ["linear"], ["zoom"], 3, 4, 10, 7], "circle-color": css("--air"),
+             "circle-stroke-color": dark ? "#0c1317" : "#ffffff", "circle-stroke-width": 1.5 } });
+  map.addLayer({ id: "air-heading", type: "symbol", source: "aircraft", minzoom: 5,
+    layout: { "text-field": "▲", "text-size": 10, "text-rotate": ["get", "track"], "text-offset": [0, -1.3], "text-rotation-alignment": "map", "text-allow-overlap": true, "text-font": ["Noto Sans Regular"] },
+    paint: { "text-color": css("--air") } });
+
+  for (const [box, layers] of [["l-dispatch", ["hex", "hex-glow", "area", "area-count"]], ["l-air", ["air", "air-heading"]], ["l-alerts", ["alerts-fill", "alerts-line"]]]) {
+    document.getElementById(box).addEventListener("change", e => layers.forEach(l => map.setLayoutProperty(l, "visibility", e.target.checked ? "visible" : "none")));
+  }
+
+  const popup = new maplibregl.Popup({ closeButton: false, maxWidth: "260px" });
+  const showDispatch = e => {
+    const p = e.features[0].properties, src = sourcesById[p.src] || {};
+    const rows = GROUPS.filter(g => p[g] > 0).map(g => `<div class="row"><span>${LABEL[g]}</span><span>${p[g]}</span></div>`).join("");
+    popup.setLngLat(e.lngLat).setHTML(`<div class="pop"><b>${p.place || "This area"}</b>${rows}<small>${src.name || ""} · ${p.place ? "active calls" : "past 2 hours"}</small></div>`).addTo(map);
+  };
+  map.on("click", "hex", showDispatch);
+  map.on("click", "area", showDispatch);
+  map.on("click", "air", e => {
+    const p = e.features[0].properties;
+    popup.setLngLat(e.lngLat).setHTML(`<div class="pop"><b>Air ambulance</b><div class="row"><span>Aircraft</span><span>${p.type}</span></div><div class="row"><span>Altitude</span><span>${Number(p.alt).toLocaleString()} ft</span></div><small>Position rounded to about 1 km.</small></div>`).addTo(map);
+  });
+  map.on("click", "alerts-fill", e => {
+    if (map.queryRenderedFeatures(e.point, { layers: ["hex", "area", "air"] }).length) return;
+    const p = e.features[0].properties;
+    popup.setLngLat(e.lngLat).setHTML(`<div class="pop"><b>${p.event}</b><small>${p.headline || ""}</small></div>`).addTo(map);
+  });
+  for (const l of ["hex", "area", "air", "alerts-fill"]) {
+    map.on("mouseenter", l, () => map.getCanvas().style.cursor = "pointer");
+    map.on("mouseleave", l, () => map.getCanvas().style.cursor = "");
+  }
+
+  load();
+  setInterval(load, REFRESH_MS);
+});
+
+function ago(iso) {
+  const m = Math.round((Date.now() - Date.parse(iso.replace("Z", ":00Z"))) / 60000);
+  return m < 1 ? "just now" : m < 60 ? `${m} min ago` : `${Math.round(m / 60)} hr ago`;
+}
+
+let lastGenerated = null;
+async function load() {
+  try {
+    const res = await fetch(DATA_URL + "?t=" + Date.now(), { cache: "no-store" });
+    if (!res.ok) throw new Error(res.status);
+    const d = await res.json();
+    lastGenerated = d.generated;
+    map.getSource("dispatch").setData(d.dispatch);
+    map.getSource("aircraft").setData(d.aircraft);
+    map.getSource("alerts").setData(d.alerts);
+    sourcesById = Object.fromEntries(d.sources.map(s => [s.id, s]));
+    const calls = d.dispatch.features.reduce((a, f) => a + f.properties.n, 0);
+    document.getElementById("n-dispatch").textContent = calls;
+    document.getElementById("n-air").textContent = d.aircraft.features.length;
+    document.getElementById("n-alerts").textContent = d.alerts.features.length;
+    const ok = d.sources.filter(s => s.ok).length;
+    document.getElementById("src-ok").textContent = `${ok} of ${d.sources.length} up`;
+    document.getElementById("sources").innerHTML = d.sources.map(s =>
+      `<li><span class="dot" style="background:var(${s.ok ? "--ok" : "--down"})"></span><span><a href="${s.url}" target="_blank" rel="noopener">${s.name}</a></span><span class="n">${s.ok ? s.count : "down"}</span></li>`).join("");
+  } catch (err) {
+    document.getElementById("updated").textContent = "Data unavailable, retrying";
+    return;
+  }
+  renderUpdated();
+}
+function renderUpdated() {
+  if (lastGenerated) document.getElementById("updated").innerHTML = `Updated<br><b>${ago(lastGenerated)}</b>`;
+}
+setInterval(renderUpdated, 30_000);
+
+document.getElementById("locate").addEventListener("click", () => {
+  const btn = document.getElementById("locate");
+  if (!navigator.geolocation) { btn.textContent = "Location not available"; return; }
+  btn.textContent = "Finding you…";
+  navigator.geolocation.getCurrentPosition(
+    p => { map.flyTo({ center: [p.coords.longitude, p.coords.latitude], zoom: 11 }); btn.textContent = "Show my area"; },
+    () => { btn.textContent = "Location blocked. Zoom in on the map instead."; },
+    { timeout: 10000 });
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,27 @@
+# Weekly: rebuild the air-ambulance helicopter list from the FAA registry.
+name: Refresh air-ambulance list
+
+on:
+  schedule:
+    - cron: "17 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  hems:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python tools/build_hems_list.py
+      - name: Commit if changed
+        run: |
+          git add collectors/hems.json
+          git diff --cached --quiet && exit 0
+          git -c user.name="on-scene-bot" -c user.email="on-scene-bot@users.noreply.github.com" commit -q -m "Refresh air-ambulance list"
+          git push -q
