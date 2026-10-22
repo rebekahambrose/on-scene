@@ -72,6 +72,11 @@ details summary { cursor: pointer; font: 600 13px var(--display); letter-spacing
 .notes p:last-child { margin: 0; }
 .notes b { color: var(--fg); }
 
+/* Keep the required map credits clear of Netlify's corner badge, and of the panel on phones. */
+.maplibregl-ctrl-bottom-right { bottom: calc(52px + env(safe-area-inset-bottom, 0px)); }
+@media (max-width: 600px) {
+  .maplibregl-ctrl-bottom-right { bottom: auto; right: auto; top: calc(8px + env(safe-area-inset-top, 0px)); left: 8px; }
+}
 .maplibregl-popup-content { background: var(--panel); color: var(--fg); border-radius: 8px; font: 13px var(--body); padding: 10px 12px; box-shadow: 0 6px 20px rgb(0 0 0 / 0.2); }
 .maplibregl-popup-tip { display: none; }
 .pop b { display: block; font: 700 16px var(--display); letter-spacing: 0.03em; text-transform: uppercase; margin-bottom: 4px; }
