@@ -11,6 +11,7 @@ Both come from the Census Bureau's public gazetteer files. Add a county's
 import csv
 import io
 import json
+import re
 import urllib.request
 import zipfile
 from pathlib import Path
@@ -23,6 +24,7 @@ COUNTIES = {
     "42043": "Dauphin County, PA",
     "42091": "Montgomery County, PA",
 }
+PLACE_STATES = {"CA"}
 # Center points for sources that report a whole city or county.
 EXTRA = {
     "SAN DIEGO CITY, CA": [32.8153, -117.135],
@@ -45,6 +47,11 @@ def main():
     for row in gazetteer("2024_Gaz_cousubs_national.zip"):
         if row["GEOID"][:5] in COUNTIES:
             places[f"{row['NAME'].upper()}, {row['USPS']}"] = [round(float(row["INTPTLAT"]), 4), round(float(row["INTPTLONG"]), 4)]
+    # Cities and towns (suffix dropped: "Baldwin Park city" -> "BALDWIN PARK, CA") for states whose feeds name a city.
+    for row in gazetteer("2024_Gaz_place_national.zip"):
+        if row["USPS"] in PLACE_STATES:
+            name = re.sub(r" (city|town|CDP|village|borough)$", "", row["NAME"]).upper()
+            places.setdefault(f"{name}, {row['USPS']}", [round(float(row["INTPTLAT"]), 4), round(float(row["INTPTLONG"]), 4)])
     (HERE / "places.json").write_text(json.dumps(places, indent=0, sort_keys=True))
     print(f"{len(places)} places")
 

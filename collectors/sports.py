@@ -1,11 +1,14 @@
-"""The Sideline layer: this week's official NFL injury report, one marker per team.
+"""The Sideline layer: official league injury reports, one marker per team.
 
-Source: the NFL's official injury reports as collected by nflverse (updated
-daily in season). Only what the league itself publishes is shown: player,
-position, practice participation, game status and the body part listed.
+NFL: the league's official injury reports as collected by nflverse (updated
+daily in season). NBA: the league's official injury report PDF, posted every
+15 minutes on game days. Only what the league itself publishes is shown:
+player, status and the reason the league lists.
 """
 import csv
 import io
+import re
+import urllib.request
 
 from collectors.common import get
 
@@ -53,6 +56,82 @@ def nfl(now):
         name, lat, lon = STADIUMS[code]
         order = {"Out": 0, "Doubtful": 1, "Questionable": 2}
         players.sort(key=lambda p: (order.get(p["status"], 3), p["name"]))
-        out.append({"team": name, "lat": lat, "lon": lon, "players": players,
-                    "out": sum(p["status"] == "Out" for p in players)})
+        out.append({"league": "NFL", "team": name, "lat": lat, "lon": lon, "players": players,
+                    "note": f"Official NFL injury report, week {week}."})
     return {"week": week, "teams": out}
+
+
+# NBA arenas. Team names as they appear in the league's injury report.
+ARENAS = {
+    "Atlanta Hawks": (33.7573, -84.3963), "Boston Celtics": (42.3662, -71.0621), "Brooklyn Nets": (40.6826, -73.9754),
+    "Charlotte Hornets": (35.2251, -80.8392), "Chicago Bulls": (41.8807, -87.6742), "Cleveland Cavaliers": (41.4965, -81.6882),
+    "Dallas Mavericks": (32.7905, -96.8103), "Denver Nuggets": (39.7487, -105.0077), "Detroit Pistons": (42.3410, -83.0550),
+    "Golden State Warriors": (37.7680, -122.3877), "Houston Rockets": (29.7508, -95.3621), "Indiana Pacers": (39.7640, -86.1555),
+    "LA Clippers": (33.9449, -118.3418), "Los Angeles Lakers": (34.0430, -118.2673), "Memphis Grizzlies": (35.1382, -90.0506),
+    "Miami Heat": (25.7814, -80.1870), "Milwaukee Bucks": (43.0451, -87.9172), "Minnesota Timberwolves": (44.9795, -93.2761),
+    "New Orleans Pelicans": (29.9490, -90.0821), "New York Knicks": (40.7505, -73.9934), "Oklahoma City Thunder": (35.4634, -97.5151),
+    "Orlando Magic": (28.5392, -81.3839), "Philadelphia 76ers": (39.9012, -75.1720), "Phoenix Suns": (33.4457, -112.0712),
+    "Portland Trail Blazers": (45.5316, -122.6668), "Sacramento Kings": (38.5802, -121.4997), "San Antonio Spurs": (29.4270, -98.4375),
+    "Toronto Raptors": (43.6435, -79.3791), "Utah Jazz": (40.7683, -111.9011), "Washington Wizards": (38.8981, -77.0209),
+}
+NBA_STATUS = {"Out", "Questionable", "Doubtful", "Probable", "Available"}
+# nba.com refuses requests that don't look like a browser.
+NBA_HEADERS = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36"}
+
+
+def _latest_nba_pdf():
+    req = urllib.request.Request("https://official.nba.com/nba-injury-report/", headers=NBA_HEADERS)
+    page = urllib.request.urlopen(req, timeout=30).read().decode("utf-8", errors="replace")
+    links = re.findall(r"https://ak-static\.cms\.nba\.com/referee/injury/Injury-Report_[^\"']+\.pdf", page)
+    return links[-1] if links else None
+
+
+def parse_nba(tokens):
+    """Walk the report's word stream: team names open a block, 'Last, First Status Reason' rows follow."""
+    names = sorted(((n.split(), n) for n in ARENAS), key=lambda x: -len(x[0]))
+    teams, team, i = {}, None, 0
+    while i < len(tokens):
+        for words, name in names:
+            if tokens[i:i + len(words)] == words:
+                team, i = name, i + len(words)
+                break
+        else:
+            tok = tokens[i]
+            if team and tok.endswith(",") and len(tok) > 1:
+                j = i + 1
+                while j < len(tokens) and tokens[j] not in NBA_STATUS and j - i < 6:
+                    j += 1
+                if j < len(tokens) and tokens[j] in NBA_STATUS:
+                    name = f"{' '.join(tokens[i + 1:j])} {tok[:-1]}"
+                    k = j + 1
+                    while (k < len(tokens) and not tokens[k].endswith(",")
+                           and not re.match(r"\d\d/\d\d/\d{4}$|\d\d:\d\d$|[A-Z]{2,3}@[A-Z]{2,3}$|Page$", tokens[k])
+                           and not any(tokens[k:k + len(w)] == w for w, _ in names)):
+                        k += 1
+                    reason = " ".join(tokens[j + 1:k]).replace("Injury/Illness - ", "").replace("Injury/Illness -", "").strip()
+                    teams.setdefault(team, []).append({"name": name, "status": tokens[j], "injury": reason})
+                    i = k
+                    continue
+            i += 1
+    return teams
+
+
+def nba(now):
+    from pypdf import PdfReader  # installed in the bot's workflow
+
+    url = _latest_nba_pdf()
+    if not url:
+        return {"teams": []}
+    req = urllib.request.Request(url, headers=NBA_HEADERS)
+    reader = PdfReader(io.BytesIO(urllib.request.urlopen(req, timeout=60).read()))
+    tokens = " ".join(p.extract_text() or "" for p in reader.pages).split()
+    when = re.search(r"Injury-Report_(\d{4}-\d\d-\d\d)_(\d\d)_?(\d\d)?(AM|PM)", url)
+    stamp = f"{when.group(1)} {when.group(2)}:{when.group(3) or '00'} {when.group(4)} ET" if when else ""
+    order = {"Out": 0, "Doubtful": 1, "Questionable": 2, "Probable": 3, "Available": 4}
+    out = []
+    for team, players in parse_nba(tokens).items():
+        lat, lon = ARENAS[team]
+        players.sort(key=lambda p: (order.get(p["status"], 5), p["name"]))
+        out.append({"league": "NBA", "team": team, "lat": lat, "lon": lon, "players": players,
+                    "note": f"Official NBA injury report, {stamp}."})
+    return {"teams": out, "url": url}

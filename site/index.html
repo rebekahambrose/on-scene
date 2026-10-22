@@ -114,7 +114,7 @@ details summary { cursor: pointer; font: 600 13px var(--display); letter-spacing
       <label class="layer" for="l-dispatch"><input type="checkbox" id="l-dispatch" checked><img data-icon="d-medical" alt=""><span>911 dispatches</span><span class="n" id="n-dispatch">–</span></label>
       <label class="layer" for="l-air"><input type="checkbox" id="l-air" checked><img data-icon="heli" alt=""><span>Air ambulances in flight</span><span class="n" id="n-air">–</span></label>
       <label class="layer" for="l-emerg"><input type="checkbox" id="l-emerg" checked><img data-icon="plane" alt=""><span>Aircraft declaring emergency</span><span class="n" id="n-emerg">–</span></label>
-      <label class="layer" for="l-sideline"><input type="checkbox" id="l-sideline" checked><img data-icon="football" alt=""><span id="sideline-label">NFL injury report</span><span class="n" id="n-sideline">–</span></label>
+      <label class="layer" for="l-sideline"><input type="checkbox" id="l-sideline" checked><img data-icon="football" alt=""><span>NFL and NBA injury reports</span><span class="n" id="n-sideline">–</span></label>
       <label class="layer" for="l-hazards"><input type="checkbox" id="l-hazards" checked><img data-icon="h-wildfire" alt=""><span>Wildfires, quakes, storm reports</span><span class="n" id="n-hazards">–</span></label>
       <label class="layer" for="l-alerts"><input type="checkbox" id="l-alerts" checked><span class="swatch-line"></span><span>Weather warnings</span><span class="n" id="n-alerts">–</span></label>
     </div>
@@ -122,6 +122,7 @@ details summary { cursor: pointer; font: 600 13px var(--display); letter-spacing
       <span><img data-icon="d-medical" alt="">Medical</span><span><img data-icon="d-traffic" alt="">Crash</span>
       <span><img data-icon="d-fire" alt="">Fire</span><span><img data-icon="d-rescue" alt="">Rescue</span><span><img data-icon="d-other" alt="">Other</span>
       <span><img data-icon="h-earthquake" alt="">Quake</span><span><img data-icon="h-storm" alt="">Storm</span>
+      <span><img data-icon="football" alt="">NFL</span><span><img data-icon="basketball" alt="">NBA</span>
     </div>
   </div>
 
@@ -138,7 +139,7 @@ details summary { cursor: pointer; font: 600 13px var(--display); letter-spacing
     <p><b>Privacy.</b> Calls are grouped into hexes about 800 m across, or counted by town or ZIP code where a source gives no location. No addresses, names or exact times are kept.</p>
     <p><b>Air ambulances.</b> Positions are rounded to about 1 km, hidden below 1,000 ft, and trails show only time in the air. Where they take off and land is never shown, because that can be an emergency scene.</p>
     <p><b>What this shows.</b> Dispatches are calls for help, not confirmed injuries. They cover the past 2 hours or calls still active.</p>
-    <p><b>Sideline.</b> Players on this week's official NFL injury report, exactly as the league published it. When a player goes down, an athletic trainer is usually the first person to reach them.</p>
+    <p><b>Sideline.</b> Players on the official NFL and NBA injury reports, exactly as each league published them. When a player goes down, an athletic trainer is usually the first person to reach them.</p>
     <p><b>Not an emergency service.</b> In an emergency, call 911.</p>
   </div>
 </aside>
@@ -168,13 +169,14 @@ const GLYPH = {
   heli: `<rect x="11" y="15" width="42" height="3.5" rx="1.75"/><rect x="30" y="18" width="3.5" height="6"/><ellipse cx="28" cy="32" rx="12" ry="8.5"/><rect x="37" y="29.5" width="16" height="3.5" rx="1.75"/><rect x="49.5" y="23" width="3.5" height="11" rx="1.5"/><rect x="22" y="39.5" width="2.5" height="6"/><rect x="32" y="39.5" width="2.5" height="6"/><rect x="17" y="45" width="23" height="3" rx="1.5"/><path d="M20 28c2-3 5-4 8-4v8h-9c0-1 0-3 1-4z" fill="C"/>`,
   plane: `<path d="M32 9c2 0 3.5 2 3.5 5v12l15 9v4.5l-15-5v11l5 4v3.5L32 51l-8.5 2v-3.5l5-4v-11l-15 5V35l15-9V14c0-3 1.5-5 3.5-5z"/>`,
   football: `<g transform="rotate(-35 32 32)"><ellipse cx="32" cy="32" rx="19" ry="11.5"/><g stroke="C" stroke-width="2.4" stroke-linecap="round"><path d="M24 32h16M27 28.5v7M32 28.5v7M37 28.5v7"/></g></g>`,
+  basketball: `<circle cx="32" cy="32" r="17"/><g fill="none" stroke="C" stroke-width="2.4"><path d="M15 32h34M32 15v34"/><path d="M20 20c5 5 5 19 0 24M44 20c-5 5-5 19 0 24"/></g>`,
   quake: `<path d="M10 33h9l4-12 7 22 6-26 5 21 3-5h10" fill="none" stroke="#fff" stroke-width="4" stroke-linejoin="round" stroke-linecap="round"/>`,
   bolt: `<path d="M37 10 21 36h10l-5 18 18-27H34z"/>`,
 };
 const ICONS = {
   "d-medical": ["ambulance", "--medical"], "d-traffic": ["car", "--traffic"], "d-fire": ["flame", "--fire"],
   "d-rescue": ["ring", "--rescue"], "d-other": ["alert", "--other"],
-  heli: ["heli", "--air"], plane: ["plane", "--emerg"], football: ["football", "--sideline"],
+  heli: ["heli", "--air"], plane: ["plane", "--emerg"], football: ["football", "--sideline"], basketball: ["basketball", "--sideline"],
   "h-wildfire": ["flame", "--wildfire"], "h-earthquake": ["quake", "--quake"], "h-storm": ["bolt", "--storm"],
   "h-storm-injury": ["bolt", "--fire"],
 };
@@ -228,7 +230,7 @@ map.on("load", async () => {
     layout: { "icon-image": ["concat", "h-", ["get", "kind"]], "icon-size": iconSize(0.4, 0.75), "icon-allow-overlap": true } });
 
   map.addLayer({ id: "sideline", type: "symbol", source: "sideline",
-    layout: { "icon-image": "football", "icon-size": iconSize(0.6, 0.95), "icon-allow-overlap": true,
+    layout: { "icon-image": ["match", ["get", "league"], "NBA", "basketball", "football"], "icon-size": iconSize(0.6, 0.95), "icon-allow-overlap": true,
               "text-field": ["to-string", ["get", "n"]], "text-size": 11, "text-font": ["Noto Sans Bold"], "text-offset": [0, 1.6], "text-allow-overlap": true },
     paint: { "text-color": css("--sideline"), "text-halo-color": dark ? "#0c1317" : "#ffffff", "text-halo-width": 1.5 } });
 
@@ -282,8 +284,8 @@ map.on("load", async () => {
   });
   map.on("click", "sideline", e => {
     const p = e.features[0].properties, players = JSON.parse(p.players);
-    const rows = players.map(x => `<div><span class="${x.status === "Out" ? "out" : ""}">${esc(x.name)} · ${esc(x.pos)}</span><span>${esc(x.status || x.practice)}${x.injury ? " · " + esc(x.injury) : ""}</span></div>`).join("");
-    popup.setLngLat(e.lngLat).setHTML(`<div class="pop"><b>${esc(p.team)}</b><div class="roster">${rows}</div><small>Official NFL injury report, week ${p.week}.</small></div>`).addTo(map);
+    const rows = players.map(x => `<div><span class="${x.status === "Out" ? "out" : ""}">${esc(x.name)}${x.pos ? " · " + esc(x.pos) : ""}</span><span>${esc(x.status || x.practice)}${x.injury ? " · " + esc(x.injury) : ""}</span></div>`).join("");
+    popup.setLngLat(e.lngLat).setHTML(`<div class="pop"><b>${esc(p.team)}</b><div class="roster">${rows}</div><small>${esc(p.note)}</small></div>`).addTo(map);
   });
   map.on("click", "alerts-fill", e => {
     if (map.queryRenderedFeatures(e.point, { layers: ["hex", "area", "air", "emerg", "hazard", "sideline"] }).length) return;
@@ -320,9 +322,8 @@ async function load() {
     if (d.sideline) {
       map.getSource("sideline").setData({ type: "FeatureCollection", features: d.sideline.teams.map(t => ({
         type: "Feature", geometry: { type: "Point", coordinates: [t.lon, t.lat] },
-        properties: { team: t.team, n: t.players.length, week: d.sideline.week, players: JSON.stringify(t.players) } })) });
+        properties: { team: t.team, league: t.league || "NFL", n: t.players.length, note: t.note || "", players: JSON.stringify(t.players) } })) });
       document.getElementById("n-sideline").textContent = d.sideline.teams.reduce((a, t) => a + t.players.length, 0);
-      if (d.sideline.week) document.getElementById("sideline-label").textContent = `NFL injury report, week ${d.sideline.week}`;
     }
     sourcesById = Object.fromEntries(d.sources.map(s => [s.id, s]));
     document.getElementById("n-dispatch").textContent = d.dispatch.features.reduce((a, f) => a + f.properties.n, 0);

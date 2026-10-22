@@ -118,6 +118,11 @@ def main():
     nfl = nfl or {"week": None, "teams": []}
     sources.append(status("nfl-injuries", f"NFL official injury report, week {nfl['week']}", "NFL", "sports",
                           "team stadium", "https://www.nfl.com/injuries/", sum(len(t["players"]) for t in nfl["teams"]), err))
+    nba, err = run(sports.nba, now)
+    nba = nba or {"teams": []}
+    sources.append(status("nba-injuries", "NBA official injury report", "NBA", "sports", "team arena",
+                          nba.get("url") or "https://official.nba.com/nba-injury-report/",
+                          sum(len(t["players"]) for t in nba["teams"]), err))
 
     out = {
         "generated": now.strftime("%Y-%m-%dT%H:%MZ"),
@@ -130,7 +135,7 @@ def main():
         "tracks": {"type": "FeatureCollection", "features": tracks},
         "alerts": {"type": "FeatureCollection", "features": wx},
         "hazards": points(hz, ("kind", "title", "detail")),
-        "sideline": {"week": nfl["week"], "teams": nfl["teams"]},
+        "sideline": {"week": nfl["week"], "teams": nfl["teams"] + nba["teams"]},
     }
     OUT.parent.mkdir(parents=True, exist_ok=True)
     OUT.write_text(json.dumps(out, separators=(",", ":")))

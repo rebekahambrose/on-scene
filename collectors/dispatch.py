@@ -179,6 +179,66 @@ def hernando(now):
     return out
 
 
+CHP_CENTERS = {
+    "BFCC": ("Bakersfield", 35.37, -119.02), "BSCC": ("Barstow", 34.90, -117.02), "BICC": ("Bishop", 37.36, -118.39),
+    "BCCC": ("San Diego", 32.72, -117.16), "CCCC": ("Sacramento", 38.58, -121.49), "CHCC": ("Chico", 39.73, -121.84),
+    "ECCC": ("El Centro", 32.79, -115.56), "FRCC": ("Fresno", 36.74, -119.79), "GGCC": ("Oakland", 37.80, -122.27),
+    "HMCC": ("Eureka", 40.80, -124.16), "ICCC": ("Indio", 33.72, -116.22), "INCC": ("San Bernardino", 34.11, -117.29),
+    "LACC": ("Los Angeles", 34.05, -118.24), "MRCC": ("Merced", 37.30, -120.48), "MYCC": ("Salinas", 36.68, -121.66),
+    "OCCC": ("Santa Ana", 33.75, -117.87), "RDCC": ("Redding", 40.59, -122.39), "SACC": ("Sacramento", 38.58, -121.49),
+    "SLCC": ("San Luis Obispo", 35.28, -120.66), "SKCCSTCC": ("Stockton", 37.96, -121.29), "SUCC": ("Susanville", 40.42, -120.65),
+    "TKCC": ("Truckee", 39.33, -120.18), "UKCC": ("Ukiah", 39.15, -123.21), "VTCC": ("Ventura", 34.27, -119.23),
+    "YKCC": ("Yreka", 41.74, -122.63),
+}
+CHP_INJURY = re.compile(r"Inj|1141|Ambulance|Fatal", re.I)
+CHP_NO_INJURY = re.compile(r"No Inj", re.I)
+
+
+def chp(now):
+    """California Highway Patrol incidents with injuries or an ambulance en route, statewide.
+
+    The page shows one dispatch center at a time, so this asks for each of the 25.
+    Calls are placed at the city of the CHP area office handling them.
+    """
+    import http.cookiejar
+    import urllib.error
+    import urllib.request
+    from collectors.common import USER_AGENT
+
+    opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
+    opener.addheaders = [("User-Agent", USER_AGENT)]
+    url = "https://cad.chp.ca.gov/Traffic.aspx"
+    fresh = lambda: opener.open(url, timeout=40).read().decode("utf-8", errors="replace")
+    page = fresh()
+    out, failed = [], 0
+    for code, (center, c_lat, c_lon) in CHP_CENTERS.items():
+        form = dict(re.findall(r'name="(__[A-Z]+)"[^>]*value="([^"]*)"', page))
+        form.update({"__EVENTTARGET": "ddlComCenter", "__EVENTARGUMENT": "", "ddlComCenter": code,
+                     "ddlSearches": "Choose One", "ddlResources": "Choose One"})
+        try:
+            page = opener.open(url, data=urllib.parse.urlencode(form).encode(), timeout=40).read().decode("utf-8", errors="replace")
+        except urllib.error.HTTPError:
+            failed += 1  # one center failing should not lose the rest; start over from a clean page
+            page = fresh()
+            continue
+        for cells in _table_rows(page):
+            if len(cells) < 7 or not re.match(r"\d{4}$", cells[1]):
+                continue
+            kind = cells[3]
+            if not CHP_INJURY.search(kind) or CHP_NO_INJURY.search(kind):
+                continue
+            area = cells[6]
+            key = f"{area.upper()}, CA"
+            if key in PLACES:
+                lat, lon = PLACES[key]
+                out.append((f"{area}, CA (CHP)", lat, lon, "traffic"))
+            else:
+                out.append((f"{center} area, CA (CHP)", c_lat, c_lon, "traffic"))
+    if failed == len(CHP_CENTERS):
+        raise RuntimeError("every CHP dispatch center failed")
+    return out
+
+
 SOURCES = [
     # id, collector, display name, area, precision, link
     ("seattle", seattle, "Seattle Fire Department", "Seattle, WA", "hex", "https://data.seattle.gov/Public-Safety/Seattle-Real-Time-Fire-911-Calls/kzjm-xkqj"),
@@ -192,5 +252,6 @@ SOURCES = [
     ("nashville", nashville, "Nashville Fire Department", "Nashville, TN", "area", "https://datanashvillegov-nashville.hub.arcgis.com/datasets/nashville-fire-department-active-incidents/about"),
     ("houston", houston, "City of Houston Active Incidents", "Houston, TX", "area", "https://www.houstontx.gov/activeincidents/"),
     ("milwaukee", milwaukee, "Milwaukee Fire Department", "Milwaukee, WI", "hex", "https://itmdapps.milwaukee.gov/MFDCallData/"),
+    ("chp", chp, "California Highway Patrol (injury crashes)", "California highways", "area", "https://cad.chp.ca.gov/Traffic.aspx"),
     ("hernando", hernando, "Hernando County Sheriff (Fire Rescue calls)", "Hernando County, FL", "area", "https://www.hernandosheriff.org/applications/cadinternetportal/ActiveCalls.aspx"),
 ]

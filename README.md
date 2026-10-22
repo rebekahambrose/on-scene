@@ -29,8 +29,10 @@ A live map of emergency response across the US, built only from public data.
 | Dispatch | Dauphin County WebCAD | active calls | township |
 | Dispatch | Montgomery County PA WebCAD RSS | active calls | township |
 | Dispatch | Hernando County Sheriff (Fire Rescue calls) | active calls | county |
+| Dispatch | California Highway Patrol, all 25 dispatch centers (injury crashes) | active incidents | city of the CHP area office |
+| Sideline | NBA official injury report PDF (official.nba.com) | every 15 min on game days | team arena |
 | Aircraft | adsb.lol air-ambulance helicopters (ODbL) + FAA registry | live | ~1 km |
-| Aircraft | adsb.lol aircraft squawking 7700 | every 10 min | ~1 km |
+| Aircraft | adsb.lol aircraft squawking 7700, with hexdb.io details, OpenSky flight path and OurAirports takeoff airport | every 10 min | exact |
 | Sideline | NFL official injury report (via nflverse) | daily in season | team stadium |
 | Hazards | NIFC wildfires 100+ acres | live | fire location |
 | Hazards | USGS earthquakes M2.5+, past day | live | epicenter |
