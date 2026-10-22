@@ -30,6 +30,23 @@ def _fetch():
         return get_json(url)
 
 
+def emergencies(now):
+    """Aircraft broadcasting the 7700 general-emergency code.
+
+    Runs every other cycle (10 minutes) so adsb.lol requests stay under 500 a day.
+    """
+    if now.minute % 10 >= 5:
+        return None  # skipped this cycle
+    out = []
+    for a in get_json("https://api.adsb.lol/v2/sqk/7700").get("ac", []):
+        alt = a.get("alt_baro")
+        if "lat" not in a or not isinstance(alt, (int, float)) or alt < MIN_ALT_FT:
+            continue
+        out.append({"lat": round(a["lat"], 2), "lon": round(a["lon"], 2), "alt": int(round(alt, -2)),
+                    "track": int(a.get("track") or 0), "type": a.get("t") or "Aircraft"})
+    return out
+
+
 def helicopters(now):
     out = []
     for a in _fetch().get("ac", []):

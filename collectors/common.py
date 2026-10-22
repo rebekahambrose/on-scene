@@ -22,14 +22,58 @@ def get_json(url):
     return json.loads(get(url))
 
 
+def geocode(addresses):
+    """Census Bureau batch geocoder (free, public domain). Returns {index: (lat, lon)}.
+
+    Addresses live only in memory for this call; nothing is cached or saved.
+    Intersections and partial streets usually do not match and are left out.
+    """
+    if not addresses:
+        return {}
+    import csv
+    import io
+    import uuid
+
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    for i, (street, city, state) in enumerate(addresses):
+        w.writerow([i, street, city, state, ""])
+    boundary = uuid.uuid4().hex
+    body = (
+        f"--{boundary}\r\nContent-Disposition: form-data; name=\"benchmark\"\r\n\r\nPublic_AR_Current\r\n"
+        f"--{boundary}\r\nContent-Disposition: form-data; name=\"addressFile\"; filename=\"a.csv\"\r\n"
+        f"Content-Type: text/csv\r\n\r\n{buf.getvalue()}\r\n--{boundary}--\r\n"
+    ).encode()
+    req = urllib.request.Request(
+        "https://geocoding.geo.census.gov/geocoder/locations/addressbatch", data=body,
+        headers={"User-Agent": USER_AGENT, "Content-Type": f"multipart/form-data; boundary={boundary}"})
+    with urllib.request.urlopen(req, timeout=120) as resp:
+        text = resp.read().decode("utf-8", errors="replace")
+    out = {}
+    for row in csv.reader(io.StringIO(text)):
+        if len(row) >= 6 and row[2] == "Match":
+            lon, lat = row[5].split(",")
+            out[int(row[0])] = (float(lat), float(lon))
+    return out
+
+
+TRAFFIC_WORDS = ("mvi", "mva", "motor vehicle", "vehicle accident", "collision", "crash", "traffic / transportation",
+                 "traffic/transportation", "traffic accident", "accident w/", "auto accident", "vehicle acc")
+MEDICAL_WORDS = ("aid", "medic", "medical", "acuity", "overdose", "violence", "breath", "cardiac", "fall", "sick", "injur",
+                 "uncons", "bls", "als", "ems", "assault", "bleed", "hemorr", "abdominal", "diabetic", "pain", "psych",
+                 "chest", "stroke", "seizure", "allerg", "heat", "cold expos", "drown", "chok", "burn", "trauma", "lacerat",
+                 "pregnan", "childbirth", "poison", "stab", "gunshot", "shot", "faint", "syncope", "headache", "back",
+                 "lift assist", "person down", "convuls", "respiratory", "arrest", "cpr")
+
+
 def group(call_type):
     """Collapse a dispatch call type into one of five broad groups."""
     s = (call_type or "").lower()
-    if any(k in s for k in ("mvi", "motor vehicle", "vehicle accident", "collision", "crash", "traffic / transportation", "traffic accident")):
+    if any(k in s for k in TRAFFIC_WORDS):
         return "traffic"
     if "rescue" in s or "extrication" in s or "entrapment" in s:
         return "rescue"
-    if any(k in s for k in ("aid", "medic", "medical", "acuity", "overdose", "violence", "breathing", "cardiac", "fall", "sick", "injur", "unconscious", "bls", "als", "ems")):
+    if any(k in s for k in MEDICAL_WORDS):
         return "medical"
     if "fire" in s and "alarm" not in s:
         return "fire"

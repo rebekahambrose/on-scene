@@ -14,6 +14,7 @@
   --bg: #f4f6f6; --panel: rgba(255, 255, 255, 0.94); --line: #d9e0e2; --fg: #152025; --muted: #5b6b71;
   --accent: #b86e0b; --ok: #0f7a4d; --down: #b3412a;
   --medical: #e0901c; --traffic: #2f8fd0; --fire: #d9473a; --rescue: #8f6ad8; --other: #7d8b90; --air: #c2185b;
+  --sideline: #2e7d4f; --wildfire: #e8590c; --quake: #8d6e63; --storm: #0b8a8a; --emerg: #f5b400;
   --display: "Barlow Condensed", "Arial Narrow", system-ui, sans-serif;
   --body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
   --mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
@@ -23,6 +24,7 @@
     --bg: #0c1317; --panel: rgba(18, 28, 33, 0.94); --line: #263740; --fg: #dde6e8; --muted: #8fa0a6;
     --accent: #f2a93b; --ok: #4cc38a; --down: #ef7a5f;
     --medical: #f2a93b; --traffic: #5db3e6; --fire: #ee5a4b; --rescue: #b28cf0; --other: #8a989d; --air: #f06292;
+    --sideline: #5cc98a; --wildfire: #ff7a3d; --quake: #bca59c; --storm: #3cc7c7; --emerg: #ffd23f;
     color-scheme: dark;
   }
 }
@@ -83,6 +85,11 @@ details summary { cursor: pointer; font: 600 13px var(--display); letter-spacing
 .pop b { display: block; font: 700 16px var(--display); letter-spacing: 0.03em; text-transform: uppercase; margin-bottom: 4px; }
 .pop .row { display: flex; justify-content: space-between; gap: 16px; font-family: var(--mono); font-size: 12px; }
 .pop small { display: block; color: var(--muted); margin-top: 6px; }
+.pop .roster { max-height: 220px; overflow: auto; display: grid; gap: 3px; margin-top: 4px; }
+.pop .roster div { display: grid; font-size: 12px; padding-bottom: 3px; border-bottom: 1px solid var(--line); }
+.pop .roster div:last-child { border-bottom: 0; }
+.pop .roster span:last-child { color: var(--muted); }
+.pop .out { color: var(--fire); font-weight: 600; }
 </style>
 </head>
 <body>
@@ -102,6 +109,9 @@ details summary { cursor: pointer; font: 600 13px var(--display); letter-spacing
     <div class="layers">
       <label class="layer" for="l-dispatch"><input type="checkbox" id="l-dispatch" checked><span class="swatch" style="background:var(--medical)"></span><span>911 dispatches</span><span class="n" id="n-dispatch">–</span></label>
       <label class="layer" for="l-air"><input type="checkbox" id="l-air" checked><span class="swatch" style="background:var(--air);border-radius:50%"></span><span>Air ambulances in flight</span><span class="n" id="n-air">–</span></label>
+      <label class="layer" for="l-emerg"><input type="checkbox" id="l-emerg" checked><span class="swatch" style="background:var(--emerg);border-radius:50%"></span><span>Aircraft declaring emergency</span><span class="n" id="n-emerg">–</span></label>
+      <label class="layer" for="l-sideline"><input type="checkbox" id="l-sideline" checked><span class="swatch" style="background:var(--sideline)"></span><span id="sideline-label">NFL injury report</span><span class="n" id="n-sideline">–</span></label>
+      <label class="layer" for="l-hazards"><input type="checkbox" id="l-hazards" checked><span class="swatch" style="background:var(--wildfire);border-radius:50%"></span><span>Wildfires, quakes, storm reports</span><span class="n" id="n-hazards">–</span></label>
       <label class="layer" for="l-alerts"><input type="checkbox" id="l-alerts" checked><span class="swatch" style="background:transparent;border:2px solid var(--fire)"></span><span>Weather warnings</span><span class="n" id="n-alerts">–</span></label>
     </div>
     <div class="key">
@@ -121,7 +131,8 @@ details summary { cursor: pointer; font: 600 13px var(--display); letter-spacing
 
   <div class="notes">
     <p><b>Privacy.</b> Calls are grouped into hexes about 800 m across, or counted by town where a source gives no location. No addresses, names or exact times are kept. Helicopter positions are rounded to about 1 km and hidden below 1,000 ft.</p>
-    <p><b>What this shows.</b> Dispatches are calls for help, not confirmed injuries. Hexes cover the past 2 hours or calls still active.</p>
+    <p><b>What this shows.</b> Dispatches are calls for help, not confirmed injuries. Hexes cover the past 2 hours or calls still active. Some cities report only a town or ZIP code, so those calls appear as one circle.</p>
+    <p><b>Sideline.</b> Players on this week's official NFL injury report, exactly as the league published it. When a player goes down, an athletic trainer is usually the first person to reach them.</p>
     <p><b>Not an emergency service.</b> In an emergency, call 911.</p>
   </div>
 </aside>
@@ -155,9 +166,19 @@ map.on("load", () => {
   map.addSource("alerts", { type: "geojson", data: empty });
   map.addSource("dispatch", { type: "geojson", data: empty });
   map.addSource("aircraft", { type: "geojson", data: empty });
+  map.addSource("emerg", { type: "geojson", data: empty });
+  map.addSource("hazards", { type: "geojson", data: empty });
+  map.addSource("sideline", { type: "geojson", data: empty });
 
   map.addLayer({ id: "alerts-fill", type: "fill", source: "alerts", paint: { "fill-color": css("--fire"), "fill-opacity": 0.06 } });
   map.addLayer({ id: "alerts-line", type: "line", source: "alerts", paint: { "line-color": css("--fire"), "line-width": 1.2, "line-opacity": 0.6 } });
+
+  map.addLayer({ id: "hazard", type: "circle", source: "hazards",
+    paint: { "circle-radius": ["interpolate", ["linear"], ["zoom"], 3, 3.5, 9, 7],
+             "circle-color": ["match", ["get", "kind"], "wildfire", css("--wildfire"), "earthquake", css("--quake"), css("--storm")],
+             "circle-opacity": 0.85,
+             "circle-stroke-color": ["match", ["get", "kind"], "storm-injury", css("--fire"), dark ? "#0c1317" : "#ffffff"],
+             "circle-stroke-width": ["match", ["get", "kind"], "storm-injury", 2.5, 1] } });
 
   map.addLayer({ id: "hex", type: "fill", source: "dispatch", filter: ["==", ["geometry-type"], "Polygon"],
     paint: { "fill-color": colorBy, "fill-opacity": ["interpolate", ["linear"], ["get", "n"], 1, 0.45, 4, 0.75, 8, 0.9] } });
@@ -177,11 +198,22 @@ map.on("load", () => {
     layout: { "text-field": "▲", "text-size": 10, "text-rotate": ["get", "track"], "text-offset": [0, -1.3], "text-rotation-alignment": "map", "text-allow-overlap": true, "text-font": ["Noto Sans Regular"] },
     paint: { "text-color": css("--air") } });
 
-  for (const [box, layers] of [["l-dispatch", ["hex", "hex-glow", "area", "area-count"]], ["l-air", ["air", "air-heading"]], ["l-alerts", ["alerts-fill", "alerts-line"]]]) {
+  map.addLayer({ id: "sideline", type: "circle", source: "sideline",
+    paint: { "circle-radius": ["interpolate", ["linear"], ["get", "n"], 1, 8, 15, 15], "circle-color": css("--sideline"),
+             "circle-opacity": 0.9, "circle-stroke-color": dark ? "#0c1317" : "#ffffff", "circle-stroke-width": 1.5 } });
+  map.addLayer({ id: "sideline-count", type: "symbol", source: "sideline", minzoom: 4,
+    layout: { "text-field": ["to-string", ["get", "n"]], "text-size": 11, "text-font": ["Noto Sans Bold"], "text-allow-overlap": true },
+    paint: { "text-color": "#ffffff" } });
+
+  map.addLayer({ id: "emerg", type: "circle", source: "emerg",
+    paint: { "circle-radius": 8, "circle-color": css("--emerg"), "circle-stroke-color": css("--fire"), "circle-stroke-width": 2.5 } });
+
+  for (const [box, layers] of [["l-dispatch", ["hex", "hex-glow", "area", "area-count"]], ["l-air", ["air", "air-heading"]], ["l-alerts", ["alerts-fill", "alerts-line"]],
+                               ["l-emerg", ["emerg"]], ["l-sideline", ["sideline", "sideline-count"]], ["l-hazards", ["hazard"]]]) {
     document.getElementById(box).addEventListener("change", e => layers.forEach(l => map.setLayoutProperty(l, "visibility", e.target.checked ? "visible" : "none")));
   }
 
-  const popup = new maplibregl.Popup({ closeButton: false, maxWidth: "260px" });
+  const popup = new maplibregl.Popup({ closeButton: false, maxWidth: "290px" });
   const showDispatch = e => {
     const p = e.features[0].properties, src = sourcesById[p.src] || {};
     const rows = GROUPS.filter(g => p[g] > 0).map(g => `<div class="row"><span>${LABEL[g]}</span><span>${p[g]}</span></div>`).join("");
@@ -193,12 +225,25 @@ map.on("load", () => {
     const p = e.features[0].properties;
     popup.setLngLat(e.lngLat).setHTML(`<div class="pop"><b>Air ambulance</b><div class="row"><span>Aircraft</span><span>${p.type}</span></div><div class="row"><span>Altitude</span><span>${Number(p.alt).toLocaleString()} ft</span></div><small>Position rounded to about 1 km.</small></div>`).addTo(map);
   });
+  map.on("click", "emerg", e => {
+    const p = e.features[0].properties;
+    popup.setLngLat(e.lngLat).setHTML(`<div class="pop"><b>Emergency declared</b><div class="row"><span>Aircraft</span><span>${p.type}</span></div><div class="row"><span>Altitude</span><span>${Number(p.alt).toLocaleString()} ft</span></div><small>Squawking 7700. Position rounded to about 1 km.</small></div>`).addTo(map);
+  });
+  map.on("click", "hazard", e => {
+    const p = e.features[0].properties;
+    popup.setLngLat(e.lngLat).setHTML(`<div class="pop"><b>${esc(p.title)}</b><small>${esc(p.detail || "")}</small></div>`).addTo(map);
+  });
+  map.on("click", "sideline", e => {
+    const p = e.features[0].properties, players = JSON.parse(p.players);
+    const rows = players.map(x => `<div><span class="${x.status === "Out" ? "out" : ""}">${esc(x.name)} · ${esc(x.pos)}</span><span>${esc(x.status || x.practice)}${x.injury ? " · " + esc(x.injury) : ""}</span></div>`).join("");
+    popup.setLngLat(e.lngLat).setHTML(`<div class="pop"><b>${esc(p.team)}</b><div class="roster">${rows}</div><small>Official NFL injury report, week ${p.week}.</small></div>`).addTo(map);
+  });
   map.on("click", "alerts-fill", e => {
-    if (map.queryRenderedFeatures(e.point, { layers: ["hex", "area", "air"] }).length) return;
+    if (map.queryRenderedFeatures(e.point, { layers: ["hex", "area", "air", "emerg", "hazard", "sideline"] }).length) return;
     const p = e.features[0].properties;
     popup.setLngLat(e.lngLat).setHTML(`<div class="pop"><b>${p.event}</b><small>${p.headline || ""}</small></div>`).addTo(map);
   });
-  for (const l of ["hex", "area", "air", "alerts-fill"]) {
+  for (const l of ["hex", "area", "air", "emerg", "hazard", "sideline", "alerts-fill"]) {
     map.on("mouseenter", l, () => map.getCanvas().style.cursor = "pointer");
     map.on("mouseleave", l, () => map.getCanvas().style.cursor = "");
   }
@@ -206,6 +251,8 @@ map.on("load", () => {
   load();
   setInterval(load, REFRESH_MS);
 });
+
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
 function ago(iso) {
   const m = Math.round((Date.now() - Date.parse(iso.replace("Z", ":00Z"))) / 60000);
@@ -222,6 +269,17 @@ async function load() {
     map.getSource("dispatch").setData(d.dispatch);
     map.getSource("aircraft").setData(d.aircraft);
     map.getSource("alerts").setData(d.alerts);
+    if (d.emergency_aircraft) map.getSource("emerg").setData(d.emergency_aircraft);
+    if (d.hazards) map.getSource("hazards").setData(d.hazards);
+    if (d.sideline) {
+      map.getSource("sideline").setData({ type: "FeatureCollection", features: d.sideline.teams.map(t => ({
+        type: "Feature", geometry: { type: "Point", coordinates: [t.lon, t.lat] },
+        properties: { team: t.team, n: t.players.length, week: d.sideline.week, players: JSON.stringify(t.players) } })) });
+      document.getElementById("n-sideline").textContent = d.sideline.teams.reduce((a, t) => a + t.players.length, 0);
+      if (d.sideline.week) document.getElementById("sideline-label").textContent = `NFL injury report, week ${d.sideline.week}`;
+    }
+    document.getElementById("n-emerg").textContent = d.emergency_aircraft ? d.emergency_aircraft.features.length : "–";
+    document.getElementById("n-hazards").textContent = d.hazards ? d.hazards.features.length : "–";
     sourcesById = Object.fromEntries(d.sources.map(s => [s.id, s]));
     const calls = d.dispatch.features.reduce((a, f) => a + f.properties.n, 0);
     document.getElementById("n-dispatch").textContent = calls;
