@@ -76,6 +76,7 @@ details summary { cursor: pointer; font: 600 13px var(--display); letter-spacing
 .maplibregl-ctrl-bottom-right { bottom: calc(52px + env(safe-area-inset-bottom, 0px)); }
 @media (max-width: 600px) {
   .maplibregl-ctrl-bottom-right { bottom: auto; right: auto; top: calc(8px + env(safe-area-inset-top, 0px)); left: 8px; }
+  .maplibregl-ctrl-bottom-right .maplibregl-ctrl-attrib { max-width: calc(100vw - 72px); }
 }
 .maplibregl-popup-content { background: var(--panel); color: var(--fg); border-radius: 8px; font: 13px var(--body); padding: 10px 12px; box-shadow: 0 6px 20px rgb(0 0 0 / 0.2); }
 .maplibregl-popup-tip { display: none; }
