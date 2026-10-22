@@ -1,11 +1,11 @@
-# The bot. Pull all sources, aggregate, publish live.json to the "data" branch.
-# Every 30 minutes while the repo is private: each run bills at least 1 minute and
-# private repos get 2,000 free minutes a month. Set to "*/5 * * * *" if the repo goes public.
+# The bot. Every 5 minutes: pull all sources, aggregate, publish live.json to the "data" branch.
+# Public repos run Actions free. If the repo goes private again, slow this to "7,37 * * * *"
+# (every 30 minutes) to stay inside the 2,000 free private minutes a month.
 name: Collect live data
 
 on:
   schedule:
-    - cron: "7,37 * * * *"
+    - cron: "*/5 * * * *"
   workflow_dispatch:
 
 permissions:
