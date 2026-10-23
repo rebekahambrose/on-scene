@@ -7,8 +7,10 @@ player, status and the reason the league lists.
 """
 import csv
 import io
+import json
 import re
 import urllib.request
+from pathlib import Path
 
 from collectors.common import get
 
@@ -177,6 +179,23 @@ def games(now, nba_tokens=None):
         away, home = STADIUMS.get(r["away_team"], (r["away_team"],))[0], STADIUMS.get(r["home_team"], (r["home_team"],))[0]
         out.append({"league": "NFL", "lat": lat, "lon": lon, "state": state, "title": f"{away} at {home}",
                     "venue": r["stadium"], "start": start.strftime("%-I:%M %p ET, %a %b %-d")})
+
+    # College football: this week's schedule, refreshed daily by tools/build_cfb.py (CollegeFootballData.com).
+    cfb_file = Path(__file__).parent / "cfb_games.json"
+    if cfb_file.exists():
+        for g in json.loads(cfb_file.read_text()).get("games", []):
+            try:
+                start = datetime.fromisoformat(g["start"].replace("Z", "+00:00"))
+            except (KeyError, ValueError, AttributeError):
+                continue
+            state = None if g.get("tbd") else _status(start, now, 3.75)
+            if g.get("tbd") and now.astimezone(et).date() == start.astimezone(et).date():
+                state = "upcoming"
+            if not state:
+                continue
+            out.append({"league": f"College ({g.get('division', 'NCAA')})", "lat": g["lat"], "lon": g["lon"], "state": state,
+                        "title": f"{g['away']} at {g['home']}", "venue": f"{g.get('venue') or ''}, {g.get('city') or ''}".strip(", "),
+                        "start": "Time TBD" if g.get("tbd") else start.astimezone(et).strftime("%-I:%M %p ET, %a %b %-d")})
 
     toks = nba_tokens or []
     day = None

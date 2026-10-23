@@ -1,0 +1,29 @@
+# Daily: refresh this week's college football schedule and stadiums (CollegeFootballData.com).
+name: Refresh college football schedule
+
+on:
+  schedule:
+    - cron: "23 10 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  cfb:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python tools/build_cfb.py
+        env:
+          CFBD_KEY: ${{ secrets.CFBD_KEY }}
+      - name: Commit if changed
+        run: |
+          git add collectors/cfb_games.json
+          git diff --cached --quiet && exit 0
+          git -c user.name="on-scene-bot" -c user.email="on-scene-bot@users.noreply.github.com" commit -q -m "Refresh college football schedule"
+          git push -q

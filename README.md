@@ -41,6 +41,7 @@ A live map of emergency response across the US, built only from public data.
 | Hazards | NOAA river and coastal gauges at flood stage | every 30 min | gauge |
 | Hazards | EPA AirNow areas with unhealthy air (AQI 101+) | hourly | reporting area |
 | Sports | NFL and NBA games live now or later today | live | venue |
+| Sports | FBS and FCS college football games (CollegeFootballData.com, schedule refreshed daily by `tools/build_cfb.py`; needs the `CFBD_KEY` repo secret) | live | stadium |
 | Context | Hospitals with an emergency department (CMS, geocoded once by `tools/build_hospitals.py`) | static | address |
 | Weather | National Weather Service alerts | live | alert area |
 
