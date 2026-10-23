@@ -116,6 +116,91 @@ def parse_nba(tokens):
     return teams
 
 
+NBA_CODES = {
+    "ATL": "Atlanta Hawks", "BOS": "Boston Celtics", "BKN": "Brooklyn Nets", "CHA": "Charlotte Hornets", "CHI": "Chicago Bulls",
+    "CLE": "Cleveland Cavaliers", "DAL": "Dallas Mavericks", "DEN": "Denver Nuggets", "DET": "Detroit Pistons",
+    "GSW": "Golden State Warriors", "HOU": "Houston Rockets", "IND": "Indiana Pacers", "LAC": "LA Clippers",
+    "LAL": "Los Angeles Lakers", "MEM": "Memphis Grizzlies", "MIA": "Miami Heat", "MIL": "Milwaukee Bucks",
+    "MIN": "Minnesota Timberwolves", "NOP": "New Orleans Pelicans", "NYK": "New York Knicks", "OKC": "Oklahoma City Thunder",
+    "ORL": "Orlando Magic", "PHI": "Philadelphia 76ers", "PHX": "Phoenix Suns", "POR": "Portland Trail Blazers",
+    "SAC": "Sacramento Kings", "SAS": "San Antonio Spurs", "TOR": "Toronto Raptors", "UTA": "Utah Jazz", "WAS": "Washington Wizards",
+}
+# Venues that host NFL games away from a team's home stadium.
+NEUTRAL = {
+    "Stade de France": (48.9245, 2.3602), "Tottenham Hotspur Stadium": (51.6043, -0.0664), "Wembley Stadium": (51.5560, -0.2796),
+    "Allianz Arena": (48.2188, 11.6247), "Deutsche Bank Park": (50.0686, 8.6455), "Estadio Azteca": (19.3029, -99.1505),
+    "Estadio Banorte": (19.3029, -99.1505), "Croke Park": (53.3607, -6.2512), "Neo Quimica Arena": (-23.5453, -46.4742),
+    "Santiago Bernabeu": (40.4531, -3.6883), "Melbourne Cricket Ground": (-37.8200, 144.9834), "Olympiastadion": (52.5147, 13.2395),
+}
+NFL_GAMES = "https://github.com/nflverse/nfldata/raw/master/data/games.csv"
+
+
+def _status(start, now, length_h):
+    from datetime import timedelta
+    if start <= now <= start + timedelta(hours=length_h):
+        return "live"
+    if now < start <= now + timedelta(hours=14):
+        return "upcoming"
+    return None
+
+
+def games(now, nba_tokens=None):
+    """NFL and NBA games underway now or starting within 14 hours.
+
+    NFL times come from the nflverse schedule; NBA times come from the matchups
+    listed in the league's own injury report. Every one of these games has
+    athletic trainers from both teams on the sideline.
+    """
+    from datetime import datetime, timedelta
+    from zoneinfo import ZoneInfo
+
+    et = ZoneInfo("America/New_York")
+    out = []
+    today = now.astimezone(et).date()
+    for r in csv.DictReader(io.StringIO(get(NFL_GAMES, accept="text/csv"))):
+        try:
+            day = datetime.strptime(r["gameday"], "%Y-%m-%d").date()
+        except ValueError:
+            continue
+        if abs((day - today).days) > 1 or not r["gametime"]:
+            continue
+        start = datetime.strptime(f"{r['gameday']} {r['gametime']}", "%Y-%m-%d %H:%M").replace(tzinfo=et)
+        state = _status(start, now, 3.5)
+        if not state:
+            continue
+        if r["location"] == "Neutral" and r["stadium"] in NEUTRAL:
+            lat, lon = NEUTRAL[r["stadium"]]
+        elif r["home_team"] in STADIUMS:
+            _, lat, lon = STADIUMS[r["home_team"]]
+        else:
+            continue
+        away, home = STADIUMS.get(r["away_team"], (r["away_team"],))[0], STADIUMS.get(r["home_team"], (r["home_team"],))[0]
+        out.append({"league": "NFL", "lat": lat, "lon": lon, "state": state, "title": f"{away} at {home}",
+                    "venue": r["stadium"], "start": start.strftime("%-I:%M %p ET, %a %b %-d")})
+
+    toks = nba_tokens or []
+    day = None
+    for i, t in enumerate(toks):
+        if re.match(r"\d\d/\d\d/\d{4}$", t):
+            day = t
+        m = re.match(r"([A-Z]{3})@([A-Z]{3})$", t)
+        if not (m and day and i >= 2 and re.match(r"\d\d:\d\d$", toks[i - 2])):
+            continue
+        hh, mm = map(int, toks[i - 2].split(":"))
+        if hh < 11:
+            hh += 12  # the report lists tip-off times without AM/PM; NBA games tip in the afternoon or evening
+        start = datetime.strptime(day, "%m/%d/%Y").replace(hour=hh % 24, minute=mm, tzinfo=et)
+        state = _status(start, now, 2.75)
+        home = NBA_CODES.get(m.group(2))
+        if not state or home not in ARENAS or any(g["title"].endswith(home) and g["league"] == "NBA" for g in out):
+            continue
+        lat, lon = ARENAS[home]
+        out.append({"league": "NBA", "lat": lat, "lon": lon, "state": state,
+                    "title": f"{NBA_CODES.get(m.group(1), m.group(1))} at {home}", "venue": "",
+                    "start": start.strftime("%-I:%M %p ET, %a %b %-d")})
+    return out
+
+
 def nba(now):
     from pypdf import PdfReader  # installed in the bot's workflow
 
@@ -134,4 +219,4 @@ def nba(now):
         players.sort(key=lambda p: (order.get(p["status"], 5), p["name"]))
         out.append({"league": "NBA", "team": team, "lat": lat, "lon": lon, "players": players,
                     "note": f"Official NBA injury report, {stamp}."})
-    return {"teams": out, "url": url}
+    return {"teams": out, "url": url, "tokens": tokens}

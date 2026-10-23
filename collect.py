@@ -107,9 +107,22 @@ def main():
         ("wildfires", hazards.wildfires, "Wildfires 100+ acres (NIFC)", "https://data-nifc.opendata.arcgis.com/"),
         ("earthquakes", hazards.earthquakes, "Earthquakes M2.5+, past day (USGS)", "https://earthquake.usgs.gov/"),
         ("storm-reports", hazards.storm_reports, "NWS storm reports, past 6 hours", "https://mesonet.agron.iastate.edu/request/gis/lsrs.phtml"),
+        ("hurricanes", hazards.hurricanes, "Tropical storms and hurricanes (NHC)", "https://www.nhc.noaa.gov/"),
+        ("air-quality", hazards.air_quality, "Unhealthy air quality (EPA AirNow)", "https://www.airnow.gov/"),
+        ("floods", hazards.floods, "Rivers and coasts at flood stage (NOAA)", "https://water.noaa.gov/"),
     ):
-        items, err = run(fn, now)
-        items = items or []
+        had_floods = any(s.get("id") == "floods" and s.get("ok") for s in previous.get("sources", []))
+        if sid == "floods" and had_floods and now.minute % 30 >= 5:
+            # slow feed: refresh every 30 minutes, reuse the last result in between
+            items = [{"lon": f["geometry"]["coordinates"][0], "lat": f["geometry"]["coordinates"][1], **f["properties"]}
+                     for f in previous.get("hazards", {}).get("features", []) if f["properties"].get("kind") == "flood"]
+            err = None
+        else:
+            items, err = run(fn, now)
+            if err and sid == "floods":  # keep the last good flood map rather than blanking it
+                items = [{"lon": f["geometry"]["coordinates"][0], "lat": f["geometry"]["coordinates"][1], **f["properties"]}
+                         for f in previous.get("hazards", {}).get("features", []) if f["properties"].get("kind") == "flood"]
+            items = items or []
         hz += items
         sources.append(status(sid, name, "United States", "hazard", "as reported", link, len(items), err))
 
@@ -123,6 +136,10 @@ def main():
     sources.append(status("nba-injuries", "NBA official injury report", "NBA", "sports", "team arena",
                           nba.get("url") or "https://official.nba.com/nba-injury-report/",
                           sum(len(t["players"]) for t in nba["teams"]), err))
+    games, err = run(lambda t: sports.games(t, nba.get("tokens")), now)
+    games = games or []
+    sources.append(status("games", "NFL and NBA games now and today", "NFL, NBA", "sports", "venue",
+                          "https://github.com/nflverse/nfldata", len(games), err))
 
     out = {
         "generated": now.strftime("%Y-%m-%dT%H:%MZ"),
@@ -134,7 +151,8 @@ def main():
                                              "origin", "since")),
         "tracks": {"type": "FeatureCollection", "features": tracks},
         "alerts": {"type": "FeatureCollection", "features": wx},
-        "hazards": points(hz, ("kind", "title", "detail")),
+        "hazards": points(hz, ("kind", "title", "detail", "aqi")),
+        "games": points(games, ("league", "state", "title", "venue", "start")),
         "sideline": {"week": nfl["week"], "teams": nfl["teams"] + nba["teams"]},
     }
     OUT.parent.mkdir(parents=True, exist_ok=True)

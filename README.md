@@ -37,6 +37,11 @@ A live map of emergency response across the US, built only from public data.
 | Hazards | NIFC wildfires 100+ acres | live | fire location |
 | Hazards | USGS earthquakes M2.5+, past day | live | epicenter |
 | Hazards | NWS Local Storm Reports, past 6 hours (Iowa Mesonet) | live | ~1 km |
+| Hazards | NHC tropical storms and hurricanes | live | storm center |
+| Hazards | NOAA river and coastal gauges at flood stage | every 30 min | gauge |
+| Hazards | EPA AirNow areas with unhealthy air (AQI 101+) | hourly | reporting area |
+| Sports | NFL and NBA games live now or later today | live | venue |
+| Context | Hospitals with an emergency department (CMS, geocoded once by `tools/build_hospitals.py`) | static | address |
 | Weather | National Weather Service alerts | live | alert area |
 
 The full catalog of possible sources lives at https://claude.ai/artifact/2Drsf6H7eUA7dvCdPqcGbW

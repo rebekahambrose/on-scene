@@ -12,14 +12,14 @@ HEX_R = 500
 EARTH_R = 6378137
 
 
-def get(url, accept="application/json"):
+def get(url, accept="application/json", timeout=TIMEOUT):
     req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT, "Accept": accept})
-    with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
         return resp.read().decode("utf-8", errors="replace")
 
 
-def get_json(url):
-    return json.loads(get(url))
+def get_json(url, timeout=TIMEOUT):
+    return json.loads(get(url, timeout=timeout))
 
 
 def geocode(addresses):
