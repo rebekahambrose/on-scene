@@ -26,6 +26,13 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install -q -r requirements.txt
+      - name: Get the last published data (for trails and history)
+        run: |
+          mkdir -p site/data/previous
+          if git fetch -q --depth=1 origin data; then
+            git show origin/data:live.json > site/data/previous/live.json || true
+            git show origin/data:history.json > site/data/previous/history.json || true
+          fi
       - name: Run collectors
         run: python collect.py
       - name: Publish to the data branch
@@ -33,7 +40,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           cd site/data
+          rm -rf previous
           git init -q -b data
-          git add live.json
+          git add live.json history.json
           git -c user.name="on-scene-bot" -c user.email="on-scene-bot@users.noreply.github.com" commit -q -m "Live data"
           git push -q -f "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" data

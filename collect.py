@@ -12,11 +12,26 @@ from collections import Counter, defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
 
-from collectors import aircraft, dispatch, hazards, sports, weather
+from collectors import aircraft, dispatch, hazards, history, sports, weather
 from collectors.common import GROUPS, get_json, hex_id, hex_polygon
 
 OUT = Path(__file__).parent / "site" / "data" / "live.json"
-PREVIOUS = "https://raw.githubusercontent.com/rebekahambrose/on-scene/data/live.json"
+RAW = "https://raw.githubusercontent.com/rebekahambrose/on-scene/data/"
+# The workflow copies the last published files here first (no cache delay); locally we fall back to the web copy.
+PREV_DIR = Path(__file__).parent / "site" / "data" / "previous"
+
+
+def load_previous(name):
+    local = PREV_DIR / name
+    if local.exists():
+        try:
+            return json.loads(local.read_text())
+        except ValueError:
+            pass
+    try:
+        return get_json(RAW + name)
+    except Exception:
+        return {}
 
 
 def run(fn, now):
@@ -41,10 +56,7 @@ def points(items, keys):
 
 def main():
     now = datetime.now(timezone.utc)
-    try:
-        previous = get_json(PREVIOUS)
-    except Exception:
-        previous = {}
+    previous = load_previous("live.json")
     sources = []
 
     # --- 911 dispatch: snap to hexes, or count by town/ZIP/city ---
@@ -157,6 +169,8 @@ def main():
     }
     OUT.parent.mkdir(parents=True, exist_ok=True)
     OUT.write_text(json.dumps(out, separators=(",", ":")))
+    hist = history.update(load_previous("history.json"), out, now)
+    (OUT.parent / "history.json").write_text(json.dumps(hist, separators=(",", ":")))
     print(f"wrote {OUT} ({OUT.stat().st_size // 1024} KB)")
 
 
