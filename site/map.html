@@ -1,0 +1,505 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Live Map · On Scene</title>
+<meta name="description" content="Live map of 911 calls, air ambulances, hazards and games across the US, aggregated for privacy.">
+<meta name="theme-color" content="#0a1119">
+<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="assets/style.css">
+<style>
+html, body { height: 100%; overflow: hidden; }
+#map { position: fixed; inset: calc(var(--nav-h) + env(safe-area-inset-top, 0px)) 0 0 0; }
+body.embed #map { inset: 0; }
+body.embed .panel, body.embed .maplibregl-control-container { display: none; }
+
+.panel { position: fixed; z-index: 3; top: calc(var(--nav-h) + 12px + env(safe-area-inset-top, 0px)); left: max(12px, env(safe-area-inset-left, 0px));
+         width: 344px; max-height: calc(100% - var(--nav-h) - 24px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+         display: flex; flex-direction: column; background: var(--glass); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+         border: 1px solid var(--line); border-radius: 16px; box-shadow: 0 18px 50px rgb(0 0 0 / 0.45); }
+.panel .scroll { overflow: auto; overscroll-behavior: contain; }
+.panel section { padding: 12px 14px; border-top: 1px solid var(--line); }
+.panel section:first-child { border-top: 0; }
+.panel h2 { font: 600 12.5px var(--display); letter-spacing: 0.16em; color: var(--muted); margin: 0 0 6px; }
+.mini { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.mini div { background: var(--card-2); border: 1px solid var(--line); border-radius: 10px; padding: 8px; }
+.mini strong { display: block; font: 600 24px/1 var(--display); font-variant-numeric: tabular-nums; }
+.mini small { color: var(--muted); font-size: 11.5px; line-height: 1.2; display: block; margin-top: 3px; }
+.search { position: relative; }
+.results { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 2px; }
+.results button { all: unset; box-sizing: border-box; width: 100%; padding: 8px 10px; border-radius: 8px; cursor: pointer; font-size: 14px; }
+.results button span { color: var(--muted); font-size: 12.5px; }
+.results button:hover, .results button:focus-visible { background: var(--card-2); outline: none; }
+.actions { display: flex; gap: 8px; }
+.actions .btn { flex: 1; padding: 9px; font-size: 14px; }
+.sources { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 5px; font-size: 12.5px; }
+.sources li { display: grid; grid-template-columns: 8px minmax(0, 1fr) auto; gap: 8px; align-items: center; }
+.sources .dot { width: 7px; height: 7px; border-radius: 50%; }
+.sources a { color: inherit; text-decoration: none; border-bottom: 1px solid var(--line); }
+.sources .n { font: 12px var(--mono); color: var(--muted); }
+details summary { cursor: pointer; font: 600 12.5px var(--display); letter-spacing: 0.16em; text-transform: uppercase; color: var(--muted); }
+.sheet-toggle { display: none; }
+.note { font-size: 12.5px; color: var(--muted); margin: 0; }
+@media (max-width: 700px) {
+  .panel { top: auto; left: 8px; right: 8px; bottom: calc(8px + env(safe-area-inset-bottom, 0px)); width: auto; max-height: 70%; }
+  .panel:not(.open) .scroll > section:not(.always) { display: none; }
+  .sheet-toggle { display: block; all: unset; text-align: center; padding: 8px; font: 600 12.5px var(--display); letter-spacing: 0.14em; text-transform: uppercase; color: var(--accent); cursor: pointer; border-top: 1px solid var(--line); }
+}
+
+.maplibregl-ctrl-top-right { top: 6px; }
+.maplibregl-ctrl-group { background: var(--glass) !important; border: 1px solid var(--line); box-shadow: none !important; }
+.maplibregl-ctrl-group button { width: 34px; height: 34px; }
+.maplibregl-ctrl-group button + button { border-top: 1px solid var(--line) !important; }
+.maplibregl-ctrl-icon { filter: invert(1) brightness(0.9); }
+.maplibregl-ctrl-attrib { background: rgba(10, 17, 25, 0.7) !important; color: var(--muted); }
+.maplibregl-ctrl-attrib a { color: var(--muted) !important; }
+.maplibregl-ctrl-attrib-button { filter: invert(1); }
+.maplibregl-ctrl-bottom-right { bottom: calc(52px + env(safe-area-inset-bottom, 0px)); }
+@media (max-width: 700px) {
+  .maplibregl-ctrl-bottom-right { bottom: auto; right: auto; top: 8px; left: 8px; }
+  .maplibregl-ctrl-bottom-right .maplibregl-ctrl-attrib { max-width: calc(100vw - 72px); }
+}
+.maplibregl-popup-content { background: var(--glass); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); color: var(--fg); border: 1px solid var(--line); border-radius: 12px; font: 13px var(--body); padding: 12px 14px; box-shadow: 0 12px 34px rgb(0 0 0 / 0.5); }
+.maplibregl-popup-tip { display: none; }
+.pop b { display: flex; align-items: center; gap: 8px; font: 700 17px var(--display); letter-spacing: 0.03em; text-transform: uppercase; margin-bottom: 2px; }
+.pop b img { width: 24px; height: 24px; }
+.pop .sub { color: var(--muted); font-size: 12.5px; margin-bottom: 8px; }
+.pop .row { display: flex; justify-content: space-between; gap: 18px; font-family: var(--mono); font-size: 12px; padding: 2px 0; }
+.pop .row span:first-child { color: var(--muted); font-family: var(--body); }
+.pop small { display: block; color: var(--muted); margin-top: 8px; line-height: 1.4; }
+.pop a { color: var(--traffic); }
+.pop .roster { max-height: 230px; overflow: auto; display: grid; gap: 4px; margin-top: 6px; }
+.pop .roster div { display: grid; font-size: 12px; padding-bottom: 4px; border-bottom: 1px solid var(--line); }
+.pop .roster div:last-child { border-bottom: 0; }
+.pop .roster span:last-child { color: var(--muted); }
+.pop .out { color: var(--fire); font-weight: 600; }
+.pop .bar { display: flex; height: 6px; border-radius: 3px; overflow: hidden; margin: 6px 0 4px; }
+</style>
+</head>
+<body>
+<div id="map" role="region" aria-label="Live map of emergency response"></div>
+
+<aside class="panel" id="panel">
+  <div class="scroll">
+    <section class="always">
+      <div class="mini">
+        <div><strong id="m-calls">–</strong><small>911 calls</small></div>
+        <div><strong id="m-air">–</strong><small>air ambulances</small></div>
+        <div><strong id="m-haz">–</strong><small>hazards</small></div>
+      </div>
+    </section>
+    <section class="always search">
+      <label for="q" class="sr" style="position:absolute;left:-9999px">Search a city, ZIP or place</label>
+      <input class="input" id="q" type="search" placeholder="Search a city, ZIP or place" autocomplete="off">
+      <ul class="results" id="results"></ul>
+    </section>
+    <section>
+      <h2>Layers</h2>
+      <div id="layer-switches"></div>
+    </section>
+    <section>
+      <h2>911 call types</h2>
+      <div id="type-switches"></div>
+    </section>
+    <section>
+      <div class="actions"><button class="btn" id="locate" type="button">Show my area</button><button class="btn" id="tilt" type="button">3D view</button></div>
+    </section>
+    <section>
+      <h2>Happening now</h2>
+      <ul class="feed" id="feed"><li class="empty">Loading…</li></ul>
+    </section>
+    <section>
+      <details><summary>Sources (<span id="src-ok">–</span>)</summary><ul class="sources" id="sources"></ul></details>
+    </section>
+    <section>
+      <p class="note">Calls are grouped by neighborhood, town or ZIP; no addresses are kept. Air-ambulance takeoff and landing spots are hidden. A dispatch is a call for help, not a confirmed injury. <a href="about.html">How this works</a></p>
+    </section>
+  </div>
+  <button class="sheet-toggle" id="sheet" type="button" aria-expanded="false">Layers, filters and more</button>
+</aside>
+
+<script src="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.js"></script>
+<script src="assets/common.js"></script>
+<script>
+const params = new URLSearchParams(location.search);
+const EMBED = params.get("embed") === "1";
+if (EMBED) document.body.classList.add("embed"); else OS.chrome("map.html");
+const { css, esc, iconUrl, empty } = OS;
+const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
+const GROUPS = ["medical", "traffic", "fire", "rescue", "other"];
+const LABEL = { medical: "Medical", traffic: "Crash", fire: "Fire", rescue: "Rescue", other: "Alarms & other" };
+const colorBy = ["match", ["get", "top"], ...GROUPS.flatMap(g => [g, css("--" + g)]), css("--other")];
+
+// ---------- basemap: OpenFreeMap dark, retuned to the night palette ----------
+function retune(style) {
+  for (const l of style.layers) {
+    const id = l.id, p = (l.paint ||= {});
+    if (l.type === "background") p["background-color"] = "#0a1119";
+    else if (l.type === "fill") {
+      if (/water/.test(id)) p["fill-color"] = "#0b1d2c";
+      else if (/building/.test(id)) { p["fill-color"] = "#15202b"; p["fill-opacity"] = 0.8; }
+      else if (/park|wood|grass|forest|landcover/.test(id)) { p["fill-color"] = "#0e1a1c"; p["fill-opacity"] = 0.6; }
+      else { p["fill-color"] = "#0f1821"; p["fill-opacity"] = 0.5; }
+    } else if (l.type === "line") {
+      if (/water|river|stream|canal/.test(id)) p["line-color"] = "#12324a";
+      else if (/boundary|admin/.test(id)) { p["line-color"] = "#3b4f63"; p["line-opacity"] = 0.7; }
+      else if (/motorway|trunk|highway/.test(id)) p["line-color"] = "#2a3d50";
+      else if (/road|street|path|primary|secondary|tertiary|minor|service|bridge|tunnel/.test(id)) p["line-color"] = "#1b2835";
+      else if (/rail/.test(id)) p["line-color"] = "#1f2a35";
+    } else if (l.type === "symbol") {
+      p["text-color"] = /water|ocean|sea|lake/.test(id) ? "#3f6382" : /country|state|continent/.test(id) ? "#91a6b8" : "#7d91a2";
+      p["text-halo-color"] = "#0a1119";
+      p["text-halo-width"] = 1.2;
+      if (l.layout && l.layout["icon-image"] && !/shield/.test(id)) p["icon-opacity"] = 0.35;
+    }
+  }
+  return style;
+}
+
+const at = (params.get("at") || "").split(",").map(Number);
+const map = new maplibregl.Map({
+  container: "map",
+  style: { version: 8, sources: {}, layers: [{ id: "bg", type: "background", paint: { "background-color": "#0a1119" } }] },
+  center: at.length === 3 && at.every(Number.isFinite) ? [at[0], at[1]] : [-96, 37.5],
+  zoom: at.length === 3 && at.every(Number.isFinite) ? at[2] : (EMBED ? 2.4 : 2.9),
+  minZoom: 1.5, maxZoom: 15.5, maxPitch: 70, interactive: !EMBED,
+  attributionControl: { compact: true, customAttribution: "Dispatch: city and county open data · Aircraft: <a href='https://www.adsb.lol/'>adsb.lol</a> (ODbL), OpenSky, hexdb.io, FAA · Hazards: NWS, NHC, NOAA, USGS, NIFC, EPA AirNow · Hospitals: CMS · Search: Photon/OSM" },
+});
+map.setStyle("https://tiles.openfreemap.org/styles/dark", { transformStyle: (_, next) => retune(next) });
+if (!EMBED) map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), "top-right");
+const fit = () => map.resize();
+addEventListener("resize", fit);
+document.addEventListener("visibilitychange", () => { if (!document.hidden) fit(); });
+new ResizeObserver(fit).observe(document.getElementById("map"));
+
+async function loadIcons() {
+  await Promise.all(Object.keys(OS.ICONS).map(name => new Promise(res => {
+    const img = new Image(64, 64);
+    img.onload = () => { if (!map.hasImage(name)) map.addImage(name, img, { pixelRatio: 2 }); res(); };
+    img.onerror = res;
+    img.src = iconUrl(name);
+  })));
+}
+
+const iconSize = (small, big) => ["interpolate", ["linear"], ["zoom"], 2, small * 0.8, 5, small, 11, big];
+let DATA = null, sourcesById = {}, ready = false;
+const typeOn = Object.fromEntries(GROUPS.map(g => [g, true]));
+
+map.on("style.load", async () => {
+  // The first load is the blank placeholder; wait for the real basemap so our layers aren't wiped by setStyle.
+  if (!map.getSource("openmaptiles") && map.getStyle().layers.length <= 1) return;
+  try { map.setProjection({ type: "globe" }); } catch (e) {}
+  try {
+    map.setSky({ "sky-color": "#0a1119", "horizon-color": "#1b3a5a", "fog-color": "#0a1119", "sky-horizon-blend": 0.6,
+                 "horizon-fog-blend": 0.5, "fog-ground-blend": 0.6, "atmosphere-blend": ["interpolate", ["linear"], ["zoom"], 0, 1, 5, 1, 7, 0] });
+  } catch (e) {}
+  if (ready) return;
+  ready = true;
+  await loadIcons();
+  for (const s of ["alerts", "dispatch", "dispatch-pts", "aircraft", "emerg", "hazards", "sideline", "tracks", "games", "pulses", "arrivals"]) map.addSource(s, { type: "geojson", data: empty });
+  map.addSource("hospitals", { type: "geojson", data: "hospitals.json" });
+
+  map.addLayer({ id: "alerts-fill", type: "fill", source: "alerts", paint: { "fill-color": css("--fire"), "fill-opacity": 0.07 } });
+  map.addLayer({ id: "alerts-line", type: "line", source: "alerts", paint: { "line-color": css("--fire"), "line-width": 1, "line-opacity": 0.55 } });
+
+  map.addLayer({ id: "heat", type: "heatmap", source: "dispatch-pts", maxzoom: 9,
+    paint: { "heatmap-weight": ["interpolate", ["linear"], ["get", "n"], 1, 0.35, 20, 1],
+             "heatmap-intensity": ["interpolate", ["linear"], ["zoom"], 2, 0.8, 9, 2],
+             "heatmap-radius": ["interpolate", ["linear"], ["zoom"], 2, 9, 6, 22, 9, 34],
+             "heatmap-opacity": ["interpolate", ["linear"], ["zoom"], 7, 0.85, 9, 0],
+             "heatmap-color": ["interpolate", ["linear"], ["heatmap-density"], 0, "rgba(0,0,0,0)", 0.15, "rgba(242,169,59,0.25)",
+                               0.4, "rgba(242,140,40,0.55)", 0.7, "rgba(255,110,64,0.8)", 1, "rgba(255,230,170,0.95)"] } });
+  map.addLayer({ id: "hex", type: "fill-extrusion", source: "dispatch", minzoom: 7, filter: ["==", ["geometry-type"], "Polygon"],
+    paint: { "fill-extrusion-color": colorBy, "fill-extrusion-height": ["*", ["get", "n"], 140],
+             "fill-extrusion-opacity": ["interpolate", ["linear"], ["zoom"], 7, 0, 8, 0.85], "fill-extrusion-vertical-gradient": true } });
+  map.addLayer({ id: "hex-icon", type: "symbol", source: "dispatch", minzoom: 10, filter: ["==", ["geometry-type"], "Polygon"],
+    layout: { "icon-image": ["concat", "d-", ["get", "top"]], "icon-size": 0.75, "icon-allow-overlap": true } });
+  map.addLayer({ id: "area", type: "symbol", source: "dispatch", minzoom: 5, filter: ["==", ["geometry-type"], "Point"],
+    layout: { "icon-image": ["concat", "d-", ["get", "top"]], "icon-size": iconSize(0.6, 0.95), "icon-allow-overlap": true,
+              "text-field": ["to-string", ["get", "n"]], "text-size": 11, "text-font": ["Noto Sans Bold"], "text-offset": [0, 1.55], "text-allow-overlap": true, "text-optional": true },
+    paint: { "text-color": "#ffffff", "text-halo-color": "#0a1119", "text-halo-width": 1.6 } });
+  map.addLayer({ id: "arrivals", type: "circle", source: "arrivals",
+    paint: { "circle-radius": ["*", ["get", "k"], 34], "circle-color": "rgba(0,0,0,0)", "circle-stroke-width": 2.5,
+             "circle-stroke-color": ["get", "color"], "circle-stroke-opacity": ["-", 1, ["get", "k"]], "circle-pitch-alignment": "map" } });
+
+  map.addLayer({ id: "hospital", type: "symbol", source: "hospitals", minzoom: 8,
+    layout: { "icon-image": "hospital", "icon-size": iconSize(0.45, 0.7), "icon-allow-overlap": false,
+              "text-field": ["step", ["zoom"], "", 11, ["get", "name"]], "text-size": 10.5, "text-font": ["Noto Sans Regular"], "text-offset": [0, 1.3], "text-anchor": "top", "text-optional": true },
+    paint: { "text-color": css("--hospital"), "text-halo-color": "#0a1119", "text-halo-width": 1.2 } });
+
+  map.addLayer({ id: "hazard", type: "symbol", source: "hazards",
+    layout: { "icon-image": ["concat", "h-", ["get", "kind"]], "icon-allow-overlap": true,
+              "icon-size": ["interpolate", ["linear"], ["zoom"],
+                            2, ["match", ["get", "kind"], "hurricane", 0.95, 0.34],
+                            5, ["match", ["get", "kind"], "hurricane", 1.1, 0.42],
+                            11, ["match", ["get", "kind"], "hurricane", 1.2, 0.75]] } });
+  map.addLayer({ id: "sideline", type: "symbol", source: "sideline",
+    layout: { "icon-image": ["match", ["get", "league"], "NBA", "basketball", "football"], "icon-size": iconSize(0.55, 0.9), "icon-allow-overlap": true,
+              "text-field": ["to-string", ["get", "n"]], "text-size": 10.5, "text-font": ["Noto Sans Bold"], "text-offset": [0, 1.5], "text-allow-overlap": true },
+    paint: { "text-color": css("--sideline"), "text-halo-color": "#0a1119", "text-halo-width": 1.6 } });
+  map.addLayer({ id: "game", type: "symbol", source: "games",
+    layout: { "icon-image": ["concat", "g-", ["get", "state"]], "icon-size": iconSize(0.75, 1.1), "icon-allow-overlap": true, "icon-offset": [24, -24] } });
+
+  map.addLayer({ id: "pulse", type: "circle", source: "pulses",
+    paint: { "circle-radius": 10, "circle-color": "rgba(0,0,0,0)", "circle-stroke-width": 2, "circle-stroke-color": ["get", "color"], "circle-stroke-opacity": 0.6, "circle-pitch-alignment": "map" } });
+  map.addLayer({ id: "trail-heli", type: "line", source: "tracks", filter: ["==", ["get", "kind"], "heli"],
+    layout: { "line-cap": "round" }, paint: { "line-color": css("--air"), "line-width": 2, "line-opacity": 0.5, "line-dasharray": [1.5, 1.5] } });
+  map.addLayer({ id: "trail-emerg", type: "line", source: "tracks", filter: ["==", ["get", "kind"], "emergency"],
+    layout: { "line-cap": "round", "line-join": "round" }, paint: { "line-color": css("--emerg"), "line-width": 2.5, "line-opacity": 0.9 } });
+  map.addLayer({ id: "air", type: "symbol", source: "aircraft",
+    layout: { "icon-image": "heli", "icon-size": iconSize(0.5, 0.85), "icon-allow-overlap": true, "icon-rotate": ["get", "track"], "icon-rotation-alignment": "map" } });
+  map.addLayer({ id: "emerg", type: "symbol", source: "emerg",
+    layout: { "icon-image": "plane", "icon-size": iconSize(0.75, 1.05), "icon-allow-overlap": true, "icon-rotate": ["get", "track"], "icon-rotation-alignment": "map" } });
+
+  if (!EMBED) { buildSwitches(); wirePopups(); }
+  // Start the credits collapsed (the "i" button opens them) so they don't cover the map on small screens.
+  document.querySelectorAll(".maplibregl-ctrl-attrib").forEach(el => el.classList.remove("maplibregl-compact-show"));
+  load();
+  setInterval(load, 60_000);
+  animate();
+});
+
+// ---------- switches ----------
+const LAYERS = [
+  { key: "dispatch", label: "911 calls", sub: "Grouped by neighborhood", icon: "d-medical", layers: ["heat", "hex", "hex-icon", "area", "arrivals"] },
+  { key: "air", label: "Air ambulances", sub: "Helicopters in flight", icon: "heli", layers: ["air", "trail-heli"] },
+  { key: "emerg", label: "Aircraft emergencies", sub: "Squawking 7700", icon: "plane", layers: ["emerg", "trail-emerg"] },
+  { key: "sideline", label: "Injury reports", sub: "NFL and NBA, by team", icon: "football", layers: ["sideline"] },
+  { key: "games", label: "Games", sub: "Live now and later today", icon: "g-live", layers: ["game"] },
+  { key: "hazards", label: "Hazards", sub: "Fires, floods, storms, quakes, air", icon: "h-wildfire", layers: ["hazard"] },
+  { key: "alerts", label: "Weather warnings", sub: "National Weather Service", icon: "h-storm", layers: ["alerts-fill", "alerts-line"] },
+  { key: "hospitals", label: "Hospitals", sub: "With emergency departments", icon: "hospital", layers: ["hospital"] },
+];
+const switchHtml = (id, icon, label, sub, countId) => `<label class="switch" for="${id}"><img src="${iconUrl(icon)}" alt=""><span class="lbl">${label}${sub ? `<small>${sub}</small>` : ""}</span>
+  <span class="count" id="${countId}"></span><input type="checkbox" id="${id}" checked><span class="track"></span></label>`;
+function buildSwitches() {
+  document.getElementById("layer-switches").innerHTML = LAYERS.map(l => switchHtml("sw-" + l.key, l.icon, l.label, l.sub, "n-" + l.key)).join("");
+  for (const l of LAYERS) document.getElementById("sw-" + l.key).addEventListener("change", e =>
+    l.layers.forEach(id => map.setLayoutProperty(id, "visibility", e.target.checked ? "visible" : "none")));
+  document.getElementById("type-switches").innerHTML = GROUPS.map(g => switchHtml("ty-" + g, "d-" + g, LABEL[g], "", "nt-" + g)).join("");
+  for (const g of GROUPS) document.getElementById("ty-" + g).addEventListener("change", e => { typeOn[g] = e.target.checked; applyDispatch(false); });
+  document.getElementById("n-hospitals").textContent = hospitalCount;
+}
+
+// ---------- popups ----------
+const popup = new maplibregl.Popup({ closeButton: false, maxWidth: "310px", offset: 14 });
+const row = (k, v) => v ? `<div class="row"><span>${k}</span><span>${esc(v)}</span></div>` : "";
+const mph = kt => `${kt} kt · ${Math.round(kt * 1.15078)} mph`;
+const heading = deg => ["N", "NE", "E", "SE", "S", "SW", "W", "NW"][Math.round(deg / 45) % 8] + ` (${deg}°)`;
+const title = (icon, text) => `<b><img src="${iconUrl(icon)}" alt="">${text}</b>`;
+function wirePopups() {
+  const showDispatch = e => {
+    const p = e.features[0].properties, src = sourcesById[p.src] || {}, total = Number(p.n);
+    const bar = GROUPS.filter(g => p[g] > 0).map(g => `<span style="flex:${p[g]};background:${css("--" + g)}"></span>`).join("");
+    const rows = GROUPS.filter(g => p[g] > 0).map(g => row(LABEL[g], String(p[g]))).join("");
+    popup.setLngLat(e.lngLat).setHTML(`<div class="pop">${title("d-" + p.top, esc(p.place || "This neighborhood"))}
+      <div class="sub">${total} call${total === 1 ? "" : "s"} · ${p.place ? "active now" : "past 2 hours"}</div><div class="bar">${bar}</div>${rows}
+      <small>${esc(src.name || "")}. Grouped for privacy; no addresses are kept.</small></div>`).addTo(map);
+  };
+  map.on("click", "hex", showDispatch);
+  map.on("click", "area", showDispatch);
+  map.on("click", "air", e => {
+    const p = e.features[0].properties;
+    popup.setLngLat(e.lngLat).setHTML(`<div class="pop">${title("heli", "Air ambulance")}<div class="sub">${esc(p.model)}</div>
+      ${row("Operator", p.operator)}${row("Registration", p.reg)}${row("Altitude", Number(p.alt).toLocaleString() + " ft")}
+      ${row("Speed", mph(p.speed))}${row("Heading", heading(Number(p.track)))}
+      <small>Dashed line: its last ~30 minutes in the air. Takeoff and landing spots are hidden because they can be emergency scenes.</small></div>`).addTo(map);
+  });
+  map.on("click", "emerg", e => {
+    const p = e.features[0].properties;
+    popup.setLngLat(e.lngLat).setHTML(`<div class="pop">${title("plane", "Emergency" + (p.callsign ? " · " + esc(p.callsign) : ""))}<div class="sub">${esc(p.model)}</div>
+      ${row("Operator", p.operator)}${row("Registration", p.reg)}${row("Took off from", p.origin)}${row("Departed", p.since)}
+      ${row("Altitude", Number(p.alt).toLocaleString() + " ft")}${row("Speed", mph(p.speed))}${row("Heading", heading(Number(p.track)))}
+      <small>Broadcasting 7700, the general emergency code. The yellow line is the path flown so far. <a href="https://globe.adsb.lol/?icao=${esc(p.id)}" target="_blank" rel="noopener">Follow live on adsb.lol</a></small></div>`).addTo(map);
+  });
+  map.on("click", "hazard", e => {
+    const p = e.features[0].properties;
+    popup.setLngLat(e.lngLat).setHTML(`<div class="pop">${title("h-" + p.kind, esc(p.title))}<div class="sub">${esc(p.detail || "")}</div></div>`).addTo(map);
+  });
+  map.on("click", "sideline", e => {
+    const p = e.features[0].properties, players = JSON.parse(p.players);
+    const rows = players.map(x => `<div><span class="${x.status === "Out" ? "out" : ""}">${esc(x.name)}${x.pos ? " · " + esc(x.pos) : ""}</span><span>${esc(x.status || x.practice)}${x.injury ? " · " + esc(x.injury) : ""}</span></div>`).join("");
+    popup.setLngLat(e.lngLat).setHTML(`<div class="pop">${title(p.league === "NBA" ? "basketball" : "football", esc(p.team))}<div class="sub">${players.length} on the report · <a href="sideline.html">full tables</a></div><div class="roster">${rows}</div><small>${esc(p.note)}</small></div>`).addTo(map);
+  });
+  map.on("click", "game", e => {
+    const p = e.features[0].properties;
+    popup.setLngLat(e.lngLat).setHTML(`<div class="pop">${title("g-" + p.state, p.state === "live" ? "Live now" : "Today")}<div class="sub">${esc(p.title)}</div>
+      ${row("League", p.league)}${row("Venue", p.venue)}${row("Start", p.start)}
+      <small>Athletic trainers from both teams are on the sideline for every play.</small></div>`).addTo(map);
+  });
+  map.on("click", "hospital", e => {
+    const p = e.features[0].properties;
+    popup.setLngLat(e.lngLat).setHTML(`<div class="pop">${title("hospital", esc(p.name))}<div class="sub">${esc(p.city)}</div>${row("Type", p.type)}<small>Has an emergency department (CMS).</small></div>`).addTo(map);
+  });
+  map.on("click", "alerts-fill", e => {
+    if (map.queryRenderedFeatures(e.point, { layers: ["hex", "area", "air", "emerg", "hazard", "sideline", "game", "hospital"] }).length) return;
+    const p = e.features[0].properties;
+    popup.setLngLat(e.lngLat).setHTML(`<div class="pop">${title("h-storm", esc(p.event))}<div class="sub">${esc(p.headline || "")}</div></div>`).addTo(map);
+  });
+  for (const l of ["hex", "area", "air", "emerg", "hazard", "sideline", "game", "hospital", "alerts-fill"]) {
+    map.on("mouseenter", l, () => map.getCanvas().style.cursor = "pointer");
+    map.on("mouseleave", l, () => map.getCanvas().style.cursor = "");
+  }
+}
+
+// ---------- 911 calls: apply type filters; ripple where calls arrive ----------
+const keyOf = f => f.properties.place || f.geometry.coordinates[0][0].join(",");
+function centroid(ring) {
+  let x = 0, y = 0;
+  for (const [a, b] of ring.slice(0, -1)) { x += a; y += b; }
+  return [x / (ring.length - 1), y / (ring.length - 1)];
+}
+const pointOf = f => f.geometry.type === "Polygon" ? centroid(f.geometry.coordinates[0]) : f.geometry.coordinates;
+let lastCounts = null, arrivals = [];
+function applyDispatch(fresh) {
+  if (!DATA) return;
+  const feats = [];
+  for (const f of DATA.dispatch.features) {
+    const p = f.properties, kept = GROUPS.filter(g => typeOn[g] && p[g] > 0);
+    const n = kept.reduce((a, g) => a + p[g], 0);
+    if (!n) continue;
+    const top = kept.sort((a, b) => p[b] - p[a])[0];
+    feats.push({ ...f, properties: { ...p, n, top } });
+  }
+  map.getSource("dispatch").setData({ type: "FeatureCollection", features: feats });
+  map.getSource("dispatch-pts").setData({ type: "FeatureCollection", features: feats.map(f => ({ type: "Feature", properties: { n: f.properties.n }, geometry: { type: "Point", coordinates: pointOf(f) } })) });
+  if (fresh && !reduceMotion) {
+    const now = performance.now(), counts = {};
+    for (const f of feats) {
+      const k = keyOf(f);
+      counts[k] = f.properties.n;
+      const grew = lastCounts ? f.properties.n > (lastCounts[k] || 0) : true;
+      if (grew) arrivals.push({ at: pointOf(f), color: css("--" + f.properties.top), born: now + (lastCounts ? 0 : Math.random() * 2500) });
+    }
+    lastCounts = counts;
+  }
+  const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+  const total = feats.reduce((a, f) => a + f.properties.n, 0);
+  set("m-calls", total.toLocaleString()); set("n-dispatch", total);
+  for (const g of GROUPS) set("nt-" + g, DATA.dispatch.features.reduce((a, f) => a + (f.properties[g] || 0), 0));
+}
+
+// ---------- data ----------
+async function load() {
+  let d;
+  try { d = await OS.getJson("live.json"); } catch (e) { return; }
+  const isNew = !DATA || d.generated !== DATA.generated;
+  DATA = d;
+  applyDispatch(isNew);
+  map.getSource("alerts").setData(d.alerts || empty);
+  map.getSource("hazards").setData(d.hazards || empty);
+  map.getSource("tracks").setData(d.tracks || empty);
+  map.getSource("games").setData(d.games || empty);
+  const teams = (d.sideline && d.sideline.teams) || [];
+  map.getSource("sideline").setData({ type: "FeatureCollection", features: teams.map(t => ({
+    type: "Feature", geometry: { type: "Point", coordinates: [t.lon, t.lat] },
+    properties: { team: t.team, league: t.league || "NFL", n: t.players.length, note: t.note || "", players: JSON.stringify(t.players) } })) });
+  sourcesById = Object.fromEntries(d.sources.map(s => [s.id, s]));
+  if (EMBED) return;
+  const t = OS.totals(d), set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+  set("m-air", t.air); set("m-haz", t.hazards);
+  set("n-air", t.air); set("n-emerg", t.emergencies); set("n-sideline", t.athletes); set("n-games", t.games);
+  set("n-hazards", t.hazards); set("n-alerts", t.alerts); set("src-ok", `${t.sourcesUp} of ${t.sources} up`);
+  document.getElementById("sources").innerHTML = d.sources.map(s =>
+    `<li><span class="dot" style="background:var(${s.ok ? "--ok" : "--down"})"></span><span><a href="${esc(s.url)}" target="_blank" rel="noopener">${esc(s.name)}</a></span><span class="n">${s.ok ? s.count : "down"}</span></li>`).join("");
+  OS.renderFeed(document.getElementById("feed"), OS.feedItems(d), it => {
+    map.flyTo({ center: it.at, zoom: it.zoom, pitch: it.zoom >= 9 ? 50 : 0, speed: 1.4 });
+    if (matchMedia("(max-width: 700px)").matches) setSheet(false);
+  });
+  OS.setStatus(d.generated);
+}
+let hospitalCount = "";
+fetch("hospitals.json").then(r => r.json()).then(h => { hospitalCount = h.features.length; const el = document.getElementById("n-hospitals"); if (el) el.textContent = hospitalCount; }).catch(() => {});
+
+// ---------- motion ----------
+function project([lon, lat], kt, deg, seconds) {
+  const km = kt * 1.852 * seconds / 3600, r = 6371, a = deg * Math.PI / 180, la = lat * Math.PI / 180, lo = lon * Math.PI / 180, dr = km / r;
+  const la2 = Math.asin(Math.sin(la) * Math.cos(dr) + Math.cos(la) * Math.sin(dr) * Math.cos(a));
+  const lo2 = lo + Math.atan2(Math.sin(a) * Math.sin(dr) * Math.cos(la), Math.cos(dr) - Math.sin(la) * Math.sin(la2));
+  return [lo2 * 180 / Math.PI, la2 * 180 / Math.PI];
+}
+const moved = (fc, s) => ({ type: "FeatureCollection", features: (fc || empty).features.map(f => ({ ...f, geometry: { type: "Point",
+  coordinates: project(f.geometry.coordinates, Number(f.properties.speed) || 0, Number(f.properties.track) || 0, s) } })) });
+let lastMove = 0;
+function animate(t = 0) {
+  if (DATA) {
+    if (t - lastMove > 1000 || !lastMove) {
+      lastMove = t;
+      const s = Math.min(600, Math.max(0, (Date.now() - OS.parseGen(DATA.generated)) / 1000));
+      const emerg = moved(DATA.emergency_aircraft, s);
+      map.getSource("aircraft").setData(moved(DATA.aircraft, s));
+      map.getSource("emerg").setData(emerg);
+      map.getSource("pulses").setData({ type: "FeatureCollection", features: [
+        ...emerg.features.map(f => ({ type: "Feature", geometry: f.geometry, properties: { color: css("--emerg") } })),
+        ...(DATA.games || empty).features.filter(f => f.properties.state === "live").map(f => ({ type: "Feature", geometry: f.geometry, properties: { color: css("--live") } })),
+        ...(DATA.hazards || empty).features.filter(f => ["hurricane", "storm-injury"].includes(f.properties.kind)).map(f => ({ type: "Feature", geometry: f.geometry, properties: { color: css("--fire") } })),
+      ] });
+    }
+    if (!reduceMotion) {
+      const k = (t % 2200) / 2200;
+      map.setPaintProperty("pulse", "circle-radius", 8 + k * 26);
+      map.setPaintProperty("pulse", "circle-stroke-opacity", 0.7 * (1 - k));
+      const now = performance.now();
+      arrivals = arrivals.filter(a => now - a.born < 1800);
+      map.getSource("arrivals").setData({ type: "FeatureCollection", features: arrivals.filter(a => now >= a.born).map(a => ({
+        type: "Feature", geometry: { type: "Point", coordinates: a.at }, properties: { color: a.color, k: (now - a.born) / 1800 } })) });
+    }
+    if (EMBED && !reduceMotion) map.setCenter([map.getCenter().lng + 0.02, map.getCenter().lat]);
+  }
+  requestAnimationFrame(animate);
+}
+
+// ---------- search (Photon, built on OpenStreetMap) ----------
+let searchTimer;
+document.getElementById("q").addEventListener("input", e => {
+  clearTimeout(searchTimer);
+  const q = e.target.value.trim(), ul = document.getElementById("results");
+  if (q.length < 2) { ul.innerHTML = ""; return; }
+  searchTimer = setTimeout(async () => {
+    try {
+      const r = await fetch(`https://photon.komoot.io/api/?q=${encodeURIComponent(q)}&limit=5&lang=en&bbox=-170,15,-60,72`);
+      const j = await r.json();
+      const hits = j.features.map(f => {
+        const p = f.properties;
+        return { name: p.name || p.postcode || q, where: [p.city, p.county, p.state].filter(Boolean).filter(x => x !== p.name).join(", "), at: f.geometry.coordinates, ext: p.extent };
+      });
+      ul.innerHTML = hits.length ? hits.map((h, i) => `<li><button type="button" data-i="${i}">${esc(h.name)} <span>${esc(h.where)}</span></button></li>`).join("") : `<li class="empty">No places found.</li>`;
+      ul.querySelectorAll("button").forEach(b => b.addEventListener("click", () => {
+        const h = hits[Number(b.dataset.i)];
+        if (h.ext) map.fitBounds([[h.ext[0], h.ext[3]], [h.ext[2], h.ext[1]]], { padding: 60, maxZoom: 12 });
+        else map.flyTo({ center: h.at, zoom: 11 });
+        ul.innerHTML = "";
+        if (matchMedia("(max-width: 700px)").matches) setSheet(false);
+      }));
+    } catch (err) { ul.innerHTML = `<li class="empty">Search is unavailable right now.</li>`; }
+  }, 300);
+});
+
+// ---------- buttons ----------
+document.getElementById("locate").addEventListener("click", () => {
+  const btn = document.getElementById("locate");
+  if (!navigator.geolocation) { btn.textContent = "Location not available"; return; }
+  btn.textContent = "Finding you…";
+  navigator.geolocation.getCurrentPosition(
+    p => { map.flyTo({ center: [p.coords.longitude, p.coords.latitude], zoom: 11, pitch: 45 }); btn.textContent = "Show my area"; },
+    () => { btn.textContent = "Location blocked"; setTimeout(() => btn.textContent = "Show my area", 3000); },
+    { timeout: 10000 });
+});
+document.getElementById("tilt").addEventListener("click", e => {
+  const flat = map.getPitch() < 10;
+  map.easeTo({ pitch: flat ? 55 : 0, bearing: flat ? -12 : 0, zoom: flat ? Math.max(map.getZoom(), 9) : map.getZoom(), duration: 900 });
+  e.currentTarget.textContent = flat ? "Flat view" : "3D view";
+});
+function setSheet(open) {
+  document.getElementById("panel").classList.toggle("open", open);
+  const b = document.getElementById("sheet");
+  b.setAttribute("aria-expanded", String(open));
+  b.textContent = open ? "Hide" : "Layers, filters and more";
+}
+document.getElementById("sheet").addEventListener("click", () => setSheet(!document.getElementById("panel").classList.contains("open")));
+</script>
+</body>
+</html>

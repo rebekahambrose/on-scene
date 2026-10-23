@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Sideline · On Scene</title>
+<meta name="description" content="Official NFL and NBA injury reports, games happening now, and the athletic trainers on every sideline.">
+<meta name="theme-color" content="#0a1119">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="assets/style.css">
+<style>
+.league { display: grid; gap: 14px; }
+.league .head { display: flex; align-items: center; gap: 10px; }
+.league .head img { width: 34px; height: 34px; }
+.nums { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.nums div { background: var(--card-2); border-radius: 10px; padding: 10px; }
+.nums strong { display: block; font: 600 28px/1 var(--display); font-variant-numeric: tabular-nums; }
+.nums small { color: var(--muted); font-size: 12px; }
+.bars { display: grid; gap: 6px; }
+.bars div { display: grid; grid-template-columns: 96px minmax(0, 1fr) 34px; gap: 10px; align-items: center; font-size: 13.5px; }
+.bars i { display: block; height: 10px; border-radius: 5px; background: linear-gradient(90deg, var(--sideline), #9be3b8); }
+.bars span:last-child { font: 12.5px var(--mono); color: var(--muted); text-align: right; }
+.spot { display: grid; gap: 10px; align-content: start; }
+.spot img { width: 36px; height: 36px; }
+.spot p { margin: 0; color: var(--muted); font-size: 14.5px; }
+.filters { display: grid; grid-template-columns: 2fr repeat(3, minmax(0, 1fr)); gap: 8px; margin-bottom: 12px; }
+@media (max-width: 760px) { .filters { grid-template-columns: 1fr 1fr; } .filters .input:first-child { grid-column: 1 / -1; } }
+.count-line { color: var(--muted); font-size: 13.5px; margin: 0 0 8px; }
+.trend { display: flex; align-items: end; gap: 3px; height: 54px; margin-top: 4px; }
+.trend i { flex: 1; background: var(--sideline); opacity: 0.75; border-radius: 2px 2px 0 0; min-height: 2px; }
+th[aria-sort] { color: var(--accent); }
+.coming { display: flex; flex-wrap: wrap; gap: 8px; }
+</style>
+</head>
+<body>
+<main class="wrap page">
+  <header>
+    <div class="eyebrow">Sideline</div>
+    <h1>Every game has a healthcare team on the sideline</h1>
+    <p class="lede" style="margin-top:14px">When a player goes down, the person sprinting onto the field is an athletic trainer: a licensed healthcare professional making a fast clinical decision on live TV. Here are today's games and the official injury reports, exactly as the leagues publish them.</p>
+  </header>
+
+  <section>
+    <div class="section-head"><h2>Games now and today</h2><a class="muted" href="map.html">On the map →</a></div>
+    <ul class="feed card" id="games" style="padding:8px"><li class="empty">Loading…</li></ul>
+  </section>
+
+  <section>
+    <div class="section-head"><div><div class="eyebrow">Athletic trainer spotlight</div><h2>What happens when a player goes down</h2></div></div>
+    <div class="grid cols-4">
+      <div class="card spot"><img id="sp1" alt=""><h3>Who they are</h3><p>Athletic trainers are healthcare professionals with a master's degree and national board certification. Most states license them. They prevent, assess, treat and rehab injuries.</p></div>
+      <div class="card spot"><img id="sp2" alt=""><h3>The first seconds</h3><p>They watch every play. When a player stays down, they run on, check breathing, consciousness and the injured area, and decide whether the player can move or needs to be stabilized.</p></div>
+      <div class="card spot"><img id="sp3" alt=""><h3>Eyes in the booth</h3><p>Every NFL game also has independent certified athletic trainers watching from the press box. Since 2015 they can stop the game with a medical timeout if a player looks disoriented.</p></div>
+      <div class="card spot"><img id="sp4" alt=""><h3>Back in or out</h3><p>Return-to-play calls follow medical protocols, like the concussion protocol, not the score. The injury reports below are the public result of those decisions.</p></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="section-head"><h2>This week's reports</h2><span class="muted" id="asof"></span></div>
+    <div class="grid cols-2" id="leagues"></div>
+  </section>
+
+  <section>
+    <div class="section-head"><h2>Every player on the report</h2></div>
+    <div class="filters">
+      <input class="input" id="f-q" type="search" placeholder="Search a player or injury" aria-label="Search a player or injury">
+      <select class="input" id="f-league" aria-label="League"><option value="">All leagues</option></select>
+      <select class="input" id="f-team" aria-label="Team"><option value="">All teams</option></select>
+      <select class="input" id="f-status" aria-label="Status"><option value="">Any status</option></select>
+    </div>
+    <p class="count-line" id="count-line"></p>
+    <div class="table-wrap">
+      <table id="tbl">
+        <thead><tr><th data-k="name">Player</th><th data-k="team">Team</th><th data-k="league">League</th><th data-k="pos">Pos</th><th data-k="status">Game status</th><th data-k="practice">Practice</th><th data-k="injury">Listed injury</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <p class="muted" style="font-size:13px;margin-top:10px">Source: the NFL's official injury reports (via nflverse) and the NBA's official injury report. Listed exactly as published; On Scene adds nothing about anyone's condition. This is not medical information or advice.</p>
+  </section>
+
+  <section class="card">
+    <h3>More leagues</h3>
+    <p class="muted" style="margin:8px 0 12px">Being added as each league's official report becomes available and its season is running:</p>
+    <div class="coming"><span class="tag soft">WNBA (season starts May)</span><span class="tag soft">MLB injured list (season starts March)</span><span class="tag soft">College football availability reports</span><span class="tag soft">MLS</span><span class="tag soft">NHL (no official injury report published)</span></div>
+  </section>
+</main>
+<script src="assets/common.js"></script>
+<script>
+OS.chrome("sideline.html");
+OS.footer();
+const { esc } = OS;
+[["sp1", "at"], ["sp2", "d-medical"], ["sp3", "football"], ["sp4", "basketball"]].forEach(([id, ic]) => document.getElementById(id).src = OS.iconUrl(ic));
+
+const AREAS = ["knee", "ankle", "hamstring", "concussion", "shoulder", "foot", "back", "groin", "calf", "hip", "quad", "achilles", "hand", "wrist", "toe", "neck", "illness", "rest", "elbow", "chest", "finger", "thumb", "rib", "abdomen", "oblique"];
+const areaOf = s => { s = (s || "").toLowerCase(); return AREAS.find(a => s.includes(a === "quad" ? "quad" : a)) || (s ? "other" : null); };
+let ROWS = [], sortKey = "status", sortDir = 1;
+const statusOrder = { Out: 0, Doubtful: 1, Questionable: 2, Probable: 3, Available: 4, "": 5 };
+
+function leagueCard(lg, rows, hist) {
+  const icon = lg === "NBA" ? "basketball" : "football";
+  const by = s => rows.filter(r => r.status === s).length;
+  const areas = {};
+  rows.forEach(r => { const a = areaOf(r.injury); if (a) areas[a] = (areas[a] || 0) + 1; });
+  const top = Object.entries(areas).filter(([a]) => a !== "other").sort((a, b) => b[1] - a[1]).slice(0, 6);
+  const max = top.length ? top[0][1] : 1;
+  const days = hist ? Object.entries(hist.days).slice(-14) : [];
+  const series = days.map(([, d]) => (d.athletes || {})[lg] || 0), smax = Math.max(1, ...series);
+  return `<div class="card league">
+    <div class="head"><img src="${OS.iconUrl(icon)}" alt=""><h3>${lg}</h3><span class="muted" style="margin-left:auto;font-size:13px">${esc(rows[0] ? rows[0].note : "")}</span></div>
+    <div class="nums"><div><strong>${rows.length}</strong><small>on the report</small></div><div><strong class="status-Out">${by("Out")}</strong><small>out</small></div>
+      <div><strong class="status-Doubtful">${by("Doubtful")}</strong><small>doubtful</small></div><div><strong class="status-Questionable">${by("Questionable")}</strong><small>questionable</small></div></div>
+    <div><div class="muted" style="font-size:13px;margin-bottom:6px">Most often listed</div>
+      <div class="bars">${top.map(([a, n]) => `<div><span>${a[0].toUpperCase() + a.slice(1)}</span><i style="width:${Math.round(n / max * 100)}%"></i><span>${n}</span></div>`).join("") || `<span class="muted">No injuries listed.</span>`}</div></div>
+    <div><div class="muted" style="font-size:13px">Players on the report by day${series.length < 3 ? " (collecting since " + (days[0] ? days[0][0] : "today") + ")" : ""}</div>
+      <div class="trend">${series.map((v, i) => `<i title="${days[i][0]}: ${v}" style="height:${Math.round(v / smax * 100)}%"></i>`).join("")}</div></div>
+  </div>`;
+}
+
+function renderTable() {
+  const q = document.getElementById("f-q").value.trim().toLowerCase();
+  const lg = document.getElementById("f-league").value, team = document.getElementById("f-team").value, st = document.getElementById("f-status").value;
+  let rows = ROWS.filter(r => (!lg || r.league === lg) && (!team || r.team === team) && (!st || r.status === st) &&
+                              (!q || `${r.name} ${r.injury} ${r.team}`.toLowerCase().includes(q)));
+  rows.sort((a, b) => {
+    const va = sortKey === "status" ? statusOrder[a.status] ?? 5 : (a[sortKey] || ""), vb = sortKey === "status" ? statusOrder[b.status] ?? 5 : (b[sortKey] || "");
+    return (va > vb ? 1 : va < vb ? -1 : 0) * sortDir || a.name.localeCompare(b.name);
+  });
+  document.getElementById("count-line").textContent = `${rows.length} of ${ROWS.length} players`;
+  document.querySelector("#tbl tbody").innerHTML = rows.slice(0, 600).map(r => `<tr><td>${esc(r.name)}</td><td>${esc(r.team)}</td><td>${r.league}</td><td>${esc(r.pos)}</td>
+    <td class="status-${esc(r.status)}">${esc(r.status || "–")}</td><td>${esc(r.practice || "–")}</td><td>${esc(r.injury || "–")}</td></tr>`).join("");
+  document.querySelectorAll("#tbl th").forEach(th => th.toggleAttribute("aria-sort", th.dataset.k === sortKey));
+}
+
+async function init() {
+  let d, hist = null;
+  try { d = await OS.getJson("live.json"); } catch (e) { return; }
+  try { hist = await OS.getJson("history.json"); } catch (e) {}
+  OS.setStatus(d.generated);
+  const games = OS.feedItems(d).filter(i => i.icon.startsWith("g-"));
+  OS.renderFeed(document.getElementById("games"), games, null, 12);
+  if (!games.length) document.getElementById("games").innerHTML = `<li class="empty">No NFL or NBA games in the next 14 hours.</li>`;
+  const teams = (d.sideline && d.sideline.teams) || [];
+  ROWS = teams.flatMap(t => t.players.map(p => ({ ...p, team: t.team, league: t.league || "NFL", note: t.note || "", pos: p.pos || "" })));
+  const leagues = [...new Set(ROWS.map(r => r.league))];
+  document.getElementById("leagues").innerHTML = leagues.map(lg => leagueCard(lg, ROWS.filter(r => r.league === lg), hist)).join("");
+  const fill = (id, vals) => document.getElementById(id).insertAdjacentHTML("beforeend", vals.map(v => `<option>${esc(v)}</option>`).join(""));
+  fill("f-league", leagues);
+  fill("f-team", [...new Set(ROWS.map(r => r.team))].sort());
+  fill("f-status", [...new Set(ROWS.map(r => r.status).filter(Boolean))].sort((a, b) => statusOrder[a] - statusOrder[b]));
+  ["f-q", "f-league", "f-team", "f-status"].forEach(id => document.getElementById(id).addEventListener("input", renderTable));
+  document.querySelectorAll("#tbl th").forEach(th => th.addEventListener("click", () => {
+    sortDir = sortKey === th.dataset.k ? -sortDir : 1; sortKey = th.dataset.k; renderTable();
+  }));
+  renderTable();
+}
+init();
+</script>
+</body>
+</html>

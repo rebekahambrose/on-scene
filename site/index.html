@@ -4,587 +4,133 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>On Scene</title>
-<meta name="description" content="A live map of emergency response across the US, built only from public data and aggregated for privacy.">
+<meta name="description" content="A live view of emergency response across the US: 911 calls, air ambulances, hazards, and the athletic trainers on every sideline. Built only from public data.">
 <meta name="theme-color" content="#0a1119">
-<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.css">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="assets/style.css">
 <style>
-/* Layout: a night-shift dispatch console. The globe fills the screen; one glass panel holds
-   the live numbers, a tap-to-fly "happening now" feed, layer chips and the notes.
-   Single dark look by choice: live maps read best at night contrast. */
-:root {
-  --bg: #0a1119; --glass: rgba(13, 21, 30, 0.86); --glass-2: rgba(22, 33, 45, 0.9); --line: rgba(120, 150, 175, 0.18);
-  --fg: #e3eaee; --muted: #8b9eac; --dim: #5d7080;
-  --accent: #f2a93b; --live: #ff4d4d; --ok: #4cc38a; --down: #ef7a5f;
-  --medical: #f2a93b; --traffic: #5db3e6; --fire: #ee5a4b; --rescue: #b28cf0; --other: #8a989d; --air: #ff5c93;
-  --sideline: #4cbb7f; --wildfire: #ff7a3d; --quake: #c9ae9f; --storm: #3cc7c7; --emerg: #ffd23f;
-  --hurricane: #c084fc; --flood: #4f8dff; --airq: #b39ddb; --hospital: #6ea8ff; --game: #4cbb7f;
-  --display: "Barlow Condensed", "Arial Narrow", system-ui, sans-serif;
-  --body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
-  --mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
-  color-scheme: dark;
-}
-html, body { height: 100%; margin: 0; }
-body { background: var(--bg); color: var(--fg); font: 14px/1.45 var(--body); overflow: hidden; }
-#map { position: fixed; inset: 0; }
-
-.panel {
-  position: fixed; z-index: 2; top: calc(12px + env(safe-area-inset-top, 0px)); left: calc(12px + env(safe-area-inset-left, 0px));
-  width: 340px; max-height: calc(100% - 24px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
-  display: flex; flex-direction: column;
-  background: var(--glass); backdrop-filter: blur(14px) saturate(1.2); -webkit-backdrop-filter: blur(14px) saturate(1.2);
-  border: 1px solid var(--line); border-radius: 14px; box-shadow: 0 18px 50px rgb(0 0 0 / 0.45);
-}
-.panel .scroll { overflow: auto; overscroll-behavior: contain; }
-.panel section { padding: 12px 16px; border-top: 1px solid var(--line); }
-.head { padding: 14px 16px 12px; display: grid; gap: 10px; }
-.brand { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-h1 { margin: 0; font: 700 30px/1 var(--display); letter-spacing: 0.04em; text-transform: uppercase; }
-h1 span { color: var(--accent); }
-.status { display: flex; align-items: center; gap: 8px; font: 12px var(--mono); color: var(--muted); text-align: right; }
-.livedot { width: 8px; height: 8px; border-radius: 50%; background: var(--live); box-shadow: 0 0 0 0 rgb(255 77 77 / 0.7); animation: beat 1.8s infinite; }
-.livedot.stale { background: var(--dim); animation: none; }
-@keyframes beat { 0% { box-shadow: 0 0 0 0 rgb(255 77 77 / 0.6); } 70% { box-shadow: 0 0 0 9px rgb(255 77 77 / 0); } 100% { box-shadow: 0 0 0 0 rgb(255 77 77 / 0); } }
-.stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
-.stat { background: var(--glass-2); border: 1px solid var(--line); border-radius: 10px; padding: 8px 8px 7px; min-width: 0; }
-.stat strong { display: block; font: 600 24px/1 var(--display); font-variant-numeric: tabular-nums; }
-.stat small { display: block; margin-top: 3px; color: var(--muted); font-size: 11px; line-height: 1.2; }
-.toggle-sheet { display: none; }
-
-h2 { margin: 0 0 8px; font: 600 12px var(--display); letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); }
-.feed { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
-.feed button { all: unset; box-sizing: border-box; width: 100%; display: grid; grid-template-columns: 26px minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 6px 8px; border-radius: 8px; cursor: pointer; }
-.feed button:hover { background: var(--glass-2); }
-.feed button:focus-visible { outline: 2px solid var(--accent); }
-.feed img { width: 26px; height: 26px; }
-.feed .t { font-size: 13px; line-height: 1.25; min-width: 0; }
-.feed .t span { display: block; color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.feed .tag { font: 600 11px var(--display); letter-spacing: 0.1em; text-transform: uppercase; padding: 2px 6px; border-radius: 4px; color: #fff; background: var(--live); }
-.feed .tag.soon { background: transparent; color: var(--muted); border: 1px solid var(--line); }
-.feed .empty { color: var(--muted); font-size: 13px; padding: 4px 8px; }
-
-.chips { display: flex; flex-wrap: wrap; gap: 6px; }
-.chip { all: unset; display: inline-flex; align-items: center; gap: 6px; padding: 4px 9px 4px 4px; border-radius: 999px; border: 1px solid var(--line); background: var(--glass-2); font-size: 12.5px; cursor: pointer; }
-.chip img { width: 20px; height: 20px; }
-.chip b { font: 500 12px var(--mono); color: var(--muted); }
-.chip[aria-pressed="false"] { opacity: 0.4; }
-.chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.row-actions { display: flex; gap: 8px; margin-top: 10px; }
-.btn { all: unset; flex: 1; text-align: center; padding: 8px; border-radius: 8px; border: 1px solid var(--line); font: 600 13px var(--body); cursor: pointer; background: var(--glass-2); }
-.btn:hover { border-color: var(--accent); }
-.btn:focus-visible { outline: 2px solid var(--accent); }
-
-details summary { cursor: pointer; font: 600 12px var(--display); letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); }
-.sources { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 5px; font-size: 12.5px; }
-.sources li { display: grid; grid-template-columns: 8px minmax(0, 1fr) auto; gap: 8px; align-items: center; }
-.sources .dot { width: 7px; height: 7px; border-radius: 50%; }
-.sources a { color: inherit; text-decoration: none; border-bottom: 1px solid var(--line); }
-.sources .n { font: 12px var(--mono); color: var(--muted); }
-.notes p { margin: 0 0 7px; font-size: 12.5px; color: var(--muted); }
-.notes p:last-child { margin: 0; }
-.notes b { color: var(--fg); font-weight: 600; }
-
-@media (max-width: 640px) {
-  .panel { top: auto; left: 8px; right: 8px; bottom: calc(8px + env(safe-area-inset-bottom, 0px)); width: auto; max-height: 72%; }
-  .panel:not(.open) .scroll { display: none; }
-  .toggle-sheet { display: block; all: unset; text-align: center; padding: 6px; font: 600 12px var(--display); letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); cursor: pointer; border-top: 1px solid var(--line); }
-  .stat strong { font-size: 21px; }
-  h1 { font-size: 26px; }
-}
-
-/* map chrome */
-.maplibregl-ctrl-group { background: var(--glass) !important; border: 1px solid var(--line); box-shadow: none !important; }
-.maplibregl-ctrl-group button { width: 34px; height: 34px; }
-.maplibregl-ctrl-group button + button { border-top: 1px solid var(--line) !important; }
-.maplibregl-ctrl-icon { filter: invert(1) brightness(0.9); }
-.ctrl-3d { font: 700 13px var(--display) !important; color: var(--fg) !important; letter-spacing: 0.05em; }
-.maplibregl-ctrl-attrib { background: rgba(10, 17, 25, 0.7) !important; color: var(--muted); }
-.maplibregl-ctrl-attrib a { color: var(--muted) !important; }
-.maplibregl-ctrl-attrib-button { filter: invert(1); }
-.maplibregl-ctrl-bottom-right { bottom: calc(52px + env(safe-area-inset-bottom, 0px)); }
-@media (max-width: 640px) {
-  .maplibregl-ctrl-bottom-right { bottom: auto; right: auto; top: calc(8px + env(safe-area-inset-top, 0px)); left: 8px; }
-  .maplibregl-ctrl-bottom-right .maplibregl-ctrl-attrib { max-width: calc(100vw - 72px); }
-}
-.maplibregl-popup-content { background: var(--glass); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); color: var(--fg); border: 1px solid var(--line); border-radius: 12px; font: 13px var(--body); padding: 12px 14px; box-shadow: 0 12px 34px rgb(0 0 0 / 0.5); }
-.maplibregl-popup-tip { display: none; }
-.pop b { display: flex; align-items: center; gap: 8px; font: 700 17px var(--display); letter-spacing: 0.03em; text-transform: uppercase; margin-bottom: 2px; }
-.pop b img { width: 24px; height: 24px; }
-.pop .sub { color: var(--muted); font-size: 12.5px; margin-bottom: 8px; }
-.pop .row { display: flex; justify-content: space-between; gap: 18px; font-family: var(--mono); font-size: 12px; padding: 2px 0; }
-.pop .row span:first-child { color: var(--muted); font-family: var(--body); }
-.pop small { display: block; color: var(--muted); margin-top: 8px; line-height: 1.4; }
-.pop a { color: var(--traffic); }
-.pop .roster { max-height: 230px; overflow: auto; display: grid; gap: 4px; margin-top: 6px; }
-.pop .roster div { display: grid; font-size: 12px; padding-bottom: 4px; border-bottom: 1px solid var(--line); }
-.pop .roster div:last-child { border-bottom: 0; }
-.pop .roster span:last-child { color: var(--muted); }
-.pop .out { color: var(--fire); font-weight: 600; }
-.pop .bar { display: flex; height: 6px; border-radius: 3px; overflow: hidden; margin: 6px 0 4px; }
-@media (prefers-reduced-motion: reduce) { .livedot { animation: none; } }
+.hero { position: relative; padding-block: 56px 40px; overflow: hidden; }
+.hero::before { content: ""; position: absolute; inset: -20% -10% auto auto; width: 70%; height: 140%; z-index: -1;
+                background: radial-gradient(closest-side, rgba(242, 169, 59, 0.12), transparent 70%); }
+.hero .wrap { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); gap: 34px; align-items: center; }
+@media (max-width: 920px) { .hero .wrap { grid-template-columns: minmax(0, 1fr); } }
+.counter { font: 700 clamp(84px, 15vw, 168px)/0.9 var(--display); color: var(--fg); letter-spacing: 0.01em; font-variant-numeric: tabular-nums;
+           text-shadow: 0 0 40px rgba(242, 169, 59, 0.25); margin: 14px 0 6px; }
+.counter-label { font: 600 clamp(20px, 2.6vw, 28px)/1.1 var(--display); letter-spacing: 0.06em; text-transform: uppercase; color: var(--accent); margin: 0; }
+.breakdown { display: flex; flex-wrap: wrap; gap: 8px 18px; margin: 16px 0 22px; color: var(--muted); font-size: 15px; }
+.breakdown span { display: inline-flex; align-items: center; gap: 7px; }
+.breakdown img { width: 22px; height: 22px; }
+.breakdown b { color: var(--fg); font-family: var(--mono); font-weight: 500; }
+.story { font-size: 18.5px; line-height: 1.6; max-width: 56ch; margin: 0 0 26px; }
+.story em { color: var(--accent-2); font-style: normal; }
+.cta { display: flex; flex-wrap: wrap; gap: 10px; }
+.mapframe { position: relative; border-radius: 18px; overflow: hidden; border: 1px solid var(--line-2); aspect-ratio: 1.15; max-width: 100%; background: var(--bg-2);
+            box-shadow: 0 30px 80px -30px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(242, 169, 59, 0.06); }
+.mapframe iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+.mapframe a { position: absolute; inset: 0; z-index: 2; }
+.mapframe .badge { position: absolute; left: 14px; bottom: 14px; z-index: 3; pointer-events: none; }
+.who .card { display: grid; gap: 8px; align-content: start; }
+.who img { width: 40px; height: 40px; }
+.who p { margin: 0; color: var(--muted); font-size: 14.5px; }
+.trust { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; }
+.trust div { border-left: 2px solid var(--accent); padding-left: 14px; }
+.trust strong { display: block; font: 600 30px/1 var(--display); }
+.trust span { color: var(--muted); font-size: 14px; }
 </style>
 </head>
 <body>
-<div id="map" role="region" aria-label="Live map of emergency response"></div>
-
-<aside class="panel" id="panel">
-  <div class="head">
-    <div class="brand">
-      <h1>On <span>Scene</span></h1>
-      <div class="status"><span class="livedot" id="livedot"></span><span id="updated">Loading…</span></div>
+<main>
+  <section class="hero">
+    <div class="wrap">
+      <div>
+        <div class="eyebrow">Live across the United States</div>
+        <div class="counter" id="counter" aria-live="polite">–</div>
+        <p class="counter-label">emergency responses in motion right now</p>
+        <div class="breakdown">
+          <span><img id="i-calls" alt=""><b id="b-calls">–</b> active 911 calls</span>
+          <span><img id="i-air" alt=""><b id="b-air">–</b> air ambulances flying</span>
+          <span><img id="i-emerg" alt=""><b id="b-emerg">–</b> aircraft emergencies</span>
+        </div>
+        <p class="story">Behind every number is someone running toward the problem: the dispatcher, the paramedic, the flight crew, and on game day, the <em>athletic trainer</em> who reaches an injured player first. On Scene makes that work visible, using only public data.</p>
+        <div class="cta">
+          <a class="btn primary" href="map.html">Open the live map</a>
+          <a class="btn" href="sideline.html">Go to the Sideline</a>
+        </div>
+      </div>
+      <div class="mapframe">
+        <iframe src="map.html?embed=1" title="Live map preview" loading="eager" tabindex="-1"></iframe>
+        <a href="map.html" aria-label="Open the live map"></a>
+        <span class="badge tag">Live map</span>
+      </div>
     </div>
-    <div class="stats">
-      <div class="stat"><strong id="s-calls">–</strong><small>911 calls on the map</small></div>
-      <div class="stat"><strong id="s-air">–</strong><small>air ambulances flying</small></div>
-      <div class="stat"><strong id="s-athletes">–</strong><small>athletes on injury reports</small></div>
-      <div class="stat"><strong id="s-hazards">–</strong><small>active hazards</small></div>
-    </div>
-  </div>
-  <button class="toggle-sheet" id="toggle-sheet" type="button" aria-expanded="false">Show details</button>
+  </section>
 
-  <div class="scroll">
-    <section>
-      <h2>Happening now</h2>
-      <ul class="feed" id="feed"><li class="empty">Loading…</li></ul>
+  <div class="wrap page" style="padding-top:8px">
+    <section class="grid cols-4" aria-label="Right now">
+      <div class="card stat"><img class="ico" id="c-i1" alt=""><strong id="c-calls">–</strong><small>911 calls active in <span id="c-cities">–</span> cities and counties</small></div>
+      <div class="card stat"><img class="ico" id="c-i2" alt=""><strong id="c-air">–</strong><small>air-ambulance helicopters in the air</small></div>
+      <div class="card stat"><img class="ico" id="c-i3" alt=""><strong id="c-ath">–</strong><small>athletes on official NFL and NBA injury reports (<span id="c-out">–</span> out)</small></div>
+      <div class="card stat"><img class="ico" id="c-i4" alt=""><strong id="c-haz">–</strong><small>active hazards: wildfires, floods, storms, quakes, bad air</small></div>
     </section>
 
-    <section>
-      <h2>Layers</h2>
-      <div class="chips" id="chips"></div>
-      <div class="row-actions">
-        <button class="btn" id="locate" type="button">Show my area</button>
-        <button class="btn" id="tilt" type="button">3D view</button>
+    <section class="grid cols-2">
+      <div class="card glow">
+        <div class="section-head"><h3>Happening now</h3><a class="muted" href="map.html">See it on the map →</a></div>
+        <ul class="feed" id="feed"><li class="empty">Loading…</li></ul>
+      </div>
+      <div class="card">
+        <div class="section-head"><h3>On the sideline today</h3><a class="muted" href="sideline.html">Sideline →</a></div>
+        <ul class="feed" id="games"><li class="empty">Loading…</li></ul>
+        <p class="muted" style="margin:12px 4px 0;font-size:14px">Every one of these games has certified athletic trainers from both teams watching every play, ready to run onto the field.</p>
       </div>
     </section>
 
     <section>
-      <details>
-        <summary>Sources (<span id="src-ok">–</span>)</summary>
-        <ul class="sources" id="sources"></ul>
-      </details>
+      <div class="section-head"><div><div class="eyebrow">Who responds</div><h2>The people behind the dots</h2></div></div>
+      <div class="grid cols-4 who">
+        <div class="card"><img id="w1" alt=""><h3>Dispatchers</h3><p>Answer the 911 call, sort out what is happening, and send the right help. Every dot on the map starts with them.</p></div>
+        <div class="card"><img id="w2" alt=""><h3>EMS crews</h3><p>EMTs and paramedics who treat patients on scene and on the way to the hospital. Most 911 calls on the map are medical.</p></div>
+        <div class="card"><img id="w3" alt=""><h3>Flight crews</h3><p>Air-ambulance flight nurses and paramedics reach rural areas and critical patients when time matters most.</p></div>
+        <div class="card"><img id="w4" alt=""><h3>Athletic trainers</h3><p>Licensed healthcare professionals on every sideline. When a player goes down, they make the first call on care, live on TV.</p></div>
+      </div>
     </section>
 
-    <section class="notes">
-      <p><b>Privacy.</b> 911 calls are grouped into hexes about 800 m across, or counted by town, ZIP or city where a source gives no location. No addresses, names or exact times are kept.</p>
-      <p><b>Air ambulances.</b> Rounded to about 1 km, hidden below 1,000 ft, and their trails show only time in the air. Takeoff and landing spots are never shown, because they can be emergency scenes.</p>
-      <p><b>What this shows.</b> A dispatch is a call for help, not a confirmed injury. Calls cover the past 2 hours or are still active. Aircraft keep moving on their last known heading between updates.</p>
-      <p><b>Sideline.</b> Official NFL and NBA injury reports, exactly as each league published them. Every game on the map has athletic trainers from both teams on the sideline, usually the first to reach an injured player.</p>
-      <p><b>Not an emergency service.</b> In an emergency, call 911.</p>
+    <section class="card">
+      <div class="trust">
+        <div><strong id="t-src">–</strong><span>public sources, refreshed every 5 minutes</span></div>
+        <div><strong>0</strong><span>addresses or names stored. Calls are grouped by neighborhood.</span></div>
+        <div><strong>$0</strong><span>to use. No ads, no tracking, no sign-up.</span></div>
+        <div><a class="btn" href="about.html">How it works</a></div>
+      </div>
     </section>
   </div>
-</aside>
-
-<script src="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.js"></script>
+</main>
+<script src="assets/common.js"></script>
 <script>
-// Where the bot publishes its data. Local previews read the copy next to this page.
-const REMOTE_DATA = "https://raw.githubusercontent.com/rebekahambrose/on-scene/data/live.json";
-const LOCAL = ["localhost", "127.0.0.1", ""].includes(location.hostname);
-const DATA_URL = LOCAL ? "data/live.json" : REMOTE_DATA;
-const REFRESH_MS = 60_000;
-const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
+OS.chrome("index.html");
+OS.footer();
+const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+for (const [id, icon] of [["i-calls", "d-medical"], ["i-air", "heli"], ["i-emerg", "plane"], ["c-i1", "d-medical"], ["c-i2", "heli"], ["c-i3", "football"], ["c-i4", "h-wildfire"],
+                          ["w1", "alert"], ["w2", "d-medical"], ["w3", "heli"], ["w4", "at"]]) document.getElementById(id).src = OS.iconUrl(icon);
 
-const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
-const GROUPS = ["medical", "traffic", "fire", "rescue", "other"];
-const LABEL = { medical: "Medical", traffic: "Crash", fire: "Fire", rescue: "Rescue", other: "Other" };
-const colorBy = ["match", ["get", "top"], ...GROUPS.flatMap(g => [g, css("--" + g)]), css("--other")];
-const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
-
-// ---------- icons: white symbol on a colored badge, drawn from SVG ----------
-const GLYPH = {
-  ambulance: `<path d="M12 23h24v19H12z"/><path d="M36 29h8l7 7v6H36z"/><circle cx="20" cy="44" r="4.5"/><circle cx="43" cy="44" r="4.5"/><path d="M22.5 26.5h3v4h4v3h-4v4h-3v-4h-4v-3h4z" fill="C"/>`,
-  car: `<path d="M12 41v-7l5-9h30l5 9v7z"/><path d="M20 27h24l3 6H17z" fill="C"/><circle cx="20" cy="43" r="4.5"/><circle cx="44" cy="43" r="4.5"/>`,
-  flame: `<path d="M32 11c4 8 13 12 13 25 0 9-6 15-13 15s-13-6-13-15c0-6 4-9 6-15 1 6 4 8 6 8-1-6-1-12 1-18z"/>`,
-  ring: `<circle cx="32" cy="32" r="13" fill="none" stroke="#fff" stroke-width="8"/><path d="M27 17h10v8H27zM27 39h10v8H27zM17 27h8v10h-8zM39 27h8v10h-8z" fill="C"/>`,
-  alert: `<rect x="28.5" y="15" width="7" height="22" rx="3.5"/><circle cx="32" cy="45" r="4"/>`,
-  heli: `<circle cx="32" cy="27" r="17" fill="none" stroke="#fff" stroke-width="2" opacity=".55"/><path d="M15 27h34M32 10v34" stroke="#fff" stroke-width="2.6" stroke-linecap="round"/><ellipse cx="32" cy="29" rx="6.5" ry="10"/><rect x="30.5" y="37" width="3" height="16" rx="1.5"/><rect x="26" y="50" width="12" height="3" rx="1.5"/>`,
-  plane: `<path d="M32 9c2 0 3.5 2 3.5 5v12l15 9v4.5l-15-5v11l5 4v3.5L32 51l-8.5 2v-3.5l5-4v-11l-15 5V35l15-9V14c0-3 1.5-5 3.5-5z"/>`,
-  football: `<g transform="rotate(-35 32 32)"><ellipse cx="32" cy="32" rx="19" ry="11.5"/><g stroke="C" stroke-width="2.4" stroke-linecap="round"><path d="M24 32h16M27 28.5v7M32 28.5v7M37 28.5v7"/></g></g>`,
-  basketball: `<circle cx="32" cy="32" r="17"/><g fill="none" stroke="C" stroke-width="2.4"><path d="M15 32h34M32 15v34"/><path d="M20 20c5 5 5 19 0 24M44 20c-5 5-5 19 0 24"/></g>`,
-  stadium: `<ellipse cx="32" cy="34" rx="20" ry="11"/><ellipse cx="32" cy="34" rx="12" ry="5.5" fill="C"/><path d="M14 26l4-9M50 26l-4-9M32 23v-9" stroke="#fff" stroke-width="2.6" stroke-linecap="round"/><path d="M28 31.5h8v5h-8z" fill="#fff" opacity=".8"/>`,
-  quake: `<path d="M10 33h9l4-12 7 22 6-26 5 21 3-5h10" fill="none" stroke="#fff" stroke-width="4" stroke-linejoin="round" stroke-linecap="round"/>`,
-  bolt: `<path d="M37 10 21 36h10l-5 18 18-27H34z"/>`,
-  swirl: `<path d="M32 14c-10 0-18 8-18 18 0-6 6-10 12-10M32 50c10 0 18-8 18-18 0 6-6 10-12 10" fill="none" stroke="#fff" stroke-width="5" stroke-linecap="round"/><circle cx="32" cy="32" r="6"/>`,
-  waves: `<path d="M12 26c5-5 10 5 15 0s10 5 15 0 7 3 10 2M12 36c5-5 10 5 15 0s10 5 15 0 7 3 10 2M12 46c5-5 10 5 15 0s10 5 15 0 7 3 10 2" fill="none" stroke="#fff" stroke-width="3.6" stroke-linecap="round"/>`,
-  haze: `<path d="M14 24h26M14 32h36M14 40h22M44 40h6M20 48h22" fill="none" stroke="#fff" stroke-width="4" stroke-linecap="round"/>`,
-  hospital: `<rect x="17" y="17" width="30" height="30" rx="4"/><path d="M29 22h6v7h7v6h-7v7h-6v-7h-7v-6h7z" fill="C"/>`,
-};
-const ICONS = {
-  "d-medical": ["ambulance", "--medical"], "d-traffic": ["car", "--traffic"], "d-fire": ["flame", "--fire"],
-  "d-rescue": ["ring", "--rescue"], "d-other": ["alert", "--other"],
-  heli: ["heli", "--air"], plane: ["plane", "--emerg"], football: ["football", "--sideline"], basketball: ["basketball", "--sideline"],
-  "g-live": ["stadium", "--live"], "g-upcoming": ["stadium", "--game"],
-  "h-wildfire": ["flame", "--wildfire"], "h-earthquake": ["quake", "--quake"], "h-storm": ["bolt", "--storm"],
-  "h-storm-injury": ["bolt", "--fire"], "h-hurricane": ["swirl", "--hurricane"], "h-flood": ["waves", "--flood"], "h-air": ["haze", "--airq"],
-  hospital: ["hospital", "--hospital"],
-};
-function iconSvg(name) {
-  const [glyph, colorVar] = ICONS[name], color = css(colorVar);
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64"><circle cx="32" cy="32" r="29" fill="${color}" stroke="#0a1119" stroke-width="3"/><circle cx="32" cy="32" r="29" fill="none" stroke="#ffffff" stroke-opacity=".85" stroke-width="2"/><g fill="#fff">${GLYPH[glyph].replaceAll('"C"', `"${color}"`)}</g></svg>`;
-}
-const iconUrl = name => "data:image/svg+xml;charset=utf-8," + encodeURIComponent(iconSvg(name));
-async function loadIcons() {
-  await Promise.all(Object.keys(ICONS).map(name => new Promise(res => {
-    const img = new Image(64, 64);
-    img.onload = () => { if (!map.hasImage(name)) map.addImage(name, img, { pixelRatio: 2 }); res(); };
-    img.onerror = res;
-    img.src = iconUrl(name);
-  })));
-}
-
-// ---------- basemap: OpenFreeMap dark, retuned to a deep navy night palette ----------
-function retune(style) {
-  for (const l of style.layers) {
-    const id = l.id, p = (l.paint ||= {});
-    if (l.type === "background") p["background-color"] = "#0a1119";
-    else if (l.type === "fill") {
-      if (/water/.test(id)) p["fill-color"] = "#0b1d2c";
-      else if (/building/.test(id)) { p["fill-color"] = "#15202b"; p["fill-opacity"] = 0.8; }
-      else if (/park|wood|grass|forest|landcover/.test(id)) { p["fill-color"] = "#0e1a1c"; p["fill-opacity"] = 0.6; }
-      else { p["fill-color"] = "#0f1821"; p["fill-opacity"] = 0.5; }
-    } else if (l.type === "line") {
-      if (/water|river|stream|canal/.test(id)) p["line-color"] = "#12324a";
-      else if (/boundary|admin/.test(id)) { p["line-color"] = "#3b4f63"; p["line-opacity"] = 0.7; }
-      else if (/motorway|trunk|highway/.test(id)) p["line-color"] = "#2a3d50";
-      else if (/road|street|path|primary|secondary|tertiary|minor|service|bridge|tunnel/.test(id)) p["line-color"] = "#1b2835";
-      else if (/rail/.test(id)) p["line-color"] = "#1f2a35";
-    } else if (l.type === "symbol") {
-      p["text-color"] = /water|ocean|sea|lake/.test(id) ? "#3f6382" : /country|state|continent/.test(id) ? "#91a6b8" : "#7d91a2";
-      p["text-halo-color"] = "#0a1119";
-      p["text-halo-width"] = 1.2;
-      if (l.layout && l.layout["icon-image"] && !/shield/.test(id)) p["icon-opacity"] = 0.35;
-    }
-  }
-  return style;
-}
-
-const map = new maplibregl.Map({
-  container: "map",
-  style: { version: 8, sources: {}, layers: [{ id: "bg", type: "background", paint: { "background-color": "#0a1119" } }] },
-  center: [-96, 37.5], zoom: 2.9, minZoom: 1.5, maxZoom: 15.5, maxPitch: 70,
-  attributionControl: { compact: true, customAttribution: "Dispatch: city and county open data · Aircraft: <a href='https://www.adsb.lol/'>adsb.lol</a> (ODbL), OpenSky, hexdb.io, FAA · Hazards: NWS, NHC, NOAA, USGS, NIFC, EPA AirNow · Hospitals: CMS" },
-});
-map.setStyle("https://tiles.openfreemap.org/styles/dark", { transformStyle: (_, next) => retune(next) });
-// Keep the canvas matched to the window (it can start at a wrong size if the page loads in a hidden tab).
-const fit = () => map.resize();
-addEventListener("resize", fit);
-document.addEventListener("visibilitychange", () => { if (!document.hidden) fit(); });
-new ResizeObserver(fit).observe(document.getElementById("map"));
-map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), "top-right");
-
-const empty = { type: "FeatureCollection", features: [] };
-const iconSize = (small, big) => ["interpolate", ["linear"], ["zoom"], 2, small * 0.8, 5, small, 11, big];
-let DATA = null, sourcesById = {}, ready = false;
-
-map.on("style.load", async () => {
-  try { map.setProjection({ type: "globe" }); } catch (e) {}
-  try {
-    map.setSky({ "sky-color": "#0a1119", "horizon-color": "#1b3a5a", "fog-color": "#0a1119", "sky-horizon-blend": 0.6,
-                 "horizon-fog-blend": 0.5, "fog-ground-blend": 0.6, "atmosphere-blend": ["interpolate", ["linear"], ["zoom"], 0, 1, 5, 1, 7, 0] });
-  } catch (e) {}
-  if (ready) return;
-  ready = true;
-  await loadIcons();
-  for (const s of ["alerts", "dispatch", "dispatch-pts", "aircraft", "emerg", "hazards", "sideline", "tracks", "games", "pulses"]) map.addSource(s, { type: "geojson", data: empty });
-  map.addSource("hospitals", { type: "geojson", data: "hospitals.json" });
-
-  // weather warnings
-  map.addLayer({ id: "alerts-fill", type: "fill", source: "alerts", paint: { "fill-color": css("--fire"), "fill-opacity": 0.07 } });
-  map.addLayer({ id: "alerts-line", type: "line", source: "alerts", paint: { "line-color": css("--fire"), "line-width": 1, "line-opacity": 0.55 } });
-
-  // 911 calls: a glow from far away, hex columns up close
-  map.addLayer({ id: "heat", type: "heatmap", source: "dispatch-pts", maxzoom: 9,
-    paint: { "heatmap-weight": ["interpolate", ["linear"], ["get", "n"], 1, 0.35, 20, 1],
-             "heatmap-intensity": ["interpolate", ["linear"], ["zoom"], 2, 0.8, 9, 2],
-             "heatmap-radius": ["interpolate", ["linear"], ["zoom"], 2, 9, 6, 22, 9, 34],
-             "heatmap-opacity": ["interpolate", ["linear"], ["zoom"], 7, 0.85, 9, 0],
-             "heatmap-color": ["interpolate", ["linear"], ["heatmap-density"], 0, "rgba(0,0,0,0)", 0.15, "rgba(242,169,59,0.25)",
-                               0.4, "rgba(242,140,40,0.55)", 0.7, "rgba(255,110,64,0.8)", 1, "rgba(255,230,170,0.95)"] } });
-  map.addLayer({ id: "hex", type: "fill-extrusion", source: "dispatch", minzoom: 7, filter: ["==", ["geometry-type"], "Polygon"],
-    paint: { "fill-extrusion-color": colorBy, "fill-extrusion-height": ["*", ["get", "n"], 140],
-             "fill-extrusion-opacity": ["interpolate", ["linear"], ["zoom"], 7, 0, 8, 0.85], "fill-extrusion-vertical-gradient": true } });
-  map.addLayer({ id: "hex-icon", type: "symbol", source: "dispatch", minzoom: 10, filter: ["==", ["geometry-type"], "Polygon"],
-    layout: { "icon-image": ["concat", "d-", ["get", "top"]], "icon-size": 0.75, "icon-allow-overlap": true } });
-  map.addLayer({ id: "area", type: "symbol", source: "dispatch", minzoom: 5, filter: ["==", ["geometry-type"], "Point"],
-    layout: { "icon-image": ["concat", "d-", ["get", "top"]], "icon-size": iconSize(0.6, 0.95), "icon-allow-overlap": true,
-              "text-field": ["to-string", ["get", "n"]], "text-size": 11, "text-font": ["Noto Sans Bold"], "text-offset": [0, 1.55], "text-allow-overlap": true, "text-optional": true },
-    paint: { "text-color": "#ffffff", "text-halo-color": "#0a1119", "text-halo-width": 1.6 } });
-
-  // hospitals (context, up close)
-  map.addLayer({ id: "hospital", type: "symbol", source: "hospitals", minzoom: 8,
-    layout: { "icon-image": "hospital", "icon-size": iconSize(0.4, 0.65), "icon-allow-overlap": false,
-              "text-field": ["step", ["zoom"], "", 11, ["get", "name"]], "text-size": 10.5, "text-font": ["Noto Sans Regular"], "text-offset": [0, 1.3], "text-anchor": "top", "text-optional": true },
-    paint: { "text-color": css("--hospital"), "text-halo-color": "#0a1119", "text-halo-width": 1.2 } });
-
-  map.addLayer({ id: "hazard", type: "symbol", source: "hazards",
-    layout: { "icon-image": ["concat", "h-", ["get", "kind"]], "icon-allow-overlap": true,
-              "icon-size": ["interpolate", ["linear"], ["zoom"],
-                            2, ["match", ["get", "kind"], "hurricane", 0.95, 0.34],
-                            5, ["match", ["get", "kind"], "hurricane", 1.1, 0.42],
-                            11, ["match", ["get", "kind"], "hurricane", 1.2, 0.75]] } });
-
-  map.addLayer({ id: "sideline", type: "symbol", source: "sideline",
-    layout: { "icon-image": ["match", ["get", "league"], "NBA", "basketball", "football"], "icon-size": iconSize(0.55, 0.9), "icon-allow-overlap": true,
-              "text-field": ["to-string", ["get", "n"]], "text-size": 10.5, "text-font": ["Noto Sans Bold"], "text-offset": [0, 1.5], "text-allow-overlap": true },
-    paint: { "text-color": css("--sideline"), "text-halo-color": "#0a1119", "text-halo-width": 1.6 } });
-  map.addLayer({ id: "game", type: "symbol", source: "games",
-    layout: { "icon-image": ["concat", "g-", ["get", "state"]], "icon-size": iconSize(0.75, 1.1), "icon-allow-overlap": true, "icon-offset": [24, -24] } });
-
-  // pulses under the moving and live things
-  map.addLayer({ id: "pulse", type: "circle", source: "pulses",
-    paint: { "circle-radius": 10, "circle-color": "rgba(0,0,0,0)", "circle-stroke-width": 2, "circle-stroke-color": ["get", "color"], "circle-stroke-opacity": 0.6, "circle-pitch-alignment": "map" } });
-
-  map.addLayer({ id: "trail-heli", type: "line", source: "tracks", filter: ["==", ["get", "kind"], "heli"],
-    layout: { "line-cap": "round" }, paint: { "line-color": css("--air"), "line-width": 2, "line-opacity": 0.5, "line-dasharray": [1.5, 1.5] } });
-  map.addLayer({ id: "trail-emerg", type: "line", source: "tracks", filter: ["==", ["get", "kind"], "emergency"],
-    layout: { "line-cap": "round", "line-join": "round" }, paint: { "line-color": css("--emerg"), "line-width": 2.5, "line-opacity": 0.9 } });
-  map.addLayer({ id: "air", type: "symbol", source: "aircraft",
-    layout: { "icon-image": "heli", "icon-size": iconSize(0.5, 0.85), "icon-allow-overlap": true, "icon-rotate": ["get", "track"], "icon-rotation-alignment": "map" } });
-  map.addLayer({ id: "emerg", type: "symbol", source: "emerg",
-    layout: { "icon-image": "plane", "icon-size": iconSize(0.75, 1.05), "icon-allow-overlap": true, "icon-rotate": ["get", "track"], "icon-rotation-alignment": "map" } });
-
-  buildChips();
-  wirePopups();
-  load();
-  setInterval(load, REFRESH_MS);
-  animate();
-});
-
-// ---------- layer chips ----------
-const LAYERS = [
-  { key: "dispatch", label: "911 calls", icon: "d-medical", layers: ["heat", "hex", "hex-icon", "area"] },
-  { key: "air", label: "Air ambulances", icon: "heli", layers: ["air", "trail-heli"] },
-  { key: "emerg", label: "Aircraft emergencies", icon: "plane", layers: ["emerg", "trail-emerg"] },
-  { key: "sideline", label: "Injury reports", icon: "football", layers: ["sideline"] },
-  { key: "games", label: "Games", icon: "g-live", layers: ["game"] },
-  { key: "hazards", label: "Hazards", icon: "h-wildfire", layers: ["hazard"] },
-  { key: "alerts", label: "Weather warnings", icon: "h-storm", layers: ["alerts-fill", "alerts-line"] },
-  { key: "hospitals", label: "Hospitals", icon: "hospital", layers: ["hospital"] },
-];
-function buildChips() {
-  const box = document.getElementById("chips");
-  box.innerHTML = LAYERS.map(l => `<button class="chip" type="button" id="chip-${l.key}" aria-pressed="true"><img src="${iconUrl(l.icon)}" alt="">${l.label}<b id="n-${l.key}"></b></button>`).join("");
-  for (const l of LAYERS) {
-    document.getElementById("chip-" + l.key).addEventListener("click", e => {
-      const btn = e.currentTarget, on = btn.getAttribute("aria-pressed") !== "true";
-      btn.setAttribute("aria-pressed", String(on));
-      l.layers.forEach(id => map.setLayoutProperty(id, "visibility", on ? "visible" : "none"));
-    });
-  }
-}
-
-// ---------- popups ----------
-const popup = new maplibregl.Popup({ closeButton: false, maxWidth: "310px", offset: 14 });
-const row = (k, v) => v ? `<div class="row"><span>${k}</span><span>${esc(v)}</span></div>` : "";
-const mph = kt => `${kt} kt · ${Math.round(kt * 1.15078)} mph`;
-const heading = deg => ["N", "NE", "E", "SE", "S", "SW", "W", "NW"][Math.round(deg / 45) % 8] + ` (${deg}°)`;
-const title = (icon, text) => `<b><img src="${iconUrl(icon)}" alt="">${text}</b>`;
-
-function wirePopups() {
-  const showDispatch = e => {
-    const p = e.features[0].properties, src = sourcesById[p.src] || {}, total = Number(p.n);
-    const bar = GROUPS.filter(g => p[g] > 0).map(g => `<span style="flex:${p[g]};background:${css("--" + g)}"></span>`).join("");
-    const rows = GROUPS.filter(g => p[g] > 0).map(g => row(LABEL[g], String(p[g]))).join("");
-    popup.setLngLat(e.lngLat).setHTML(`<div class="pop">${title("d-" + p.top, esc(p.place || "This neighborhood"))}
-      <div class="sub">${total} call${total === 1 ? "" : "s"} · ${p.place ? "active now" : "past 2 hours"}</div><div class="bar">${bar}</div>${rows}
-      <small>${esc(src.name || "")}. Grouped for privacy; no addresses are kept.</small></div>`).addTo(map);
-  };
-  map.on("click", "hex", showDispatch);
-  map.on("click", "area", showDispatch);
-  map.on("click", "air", e => {
-    const p = e.features[0].properties;
-    popup.setLngLat(e.lngLat).setHTML(`<div class="pop">${title("heli", "Air ambulance")}<div class="sub">${esc(p.model)}</div>
-      ${row("Operator", p.operator)}${row("Registration", p.reg)}${row("Altitude", Number(p.alt).toLocaleString() + " ft")}
-      ${row("Speed", mph(p.speed))}${row("Heading", heading(Number(p.track)))}
-      <small>Dashed line: its last ~30 minutes in the air. Takeoff and landing spots are hidden because they can be emergency scenes.</small></div>`).addTo(map);
-  });
-  map.on("click", "emerg", e => {
-    const p = e.features[0].properties;
-    popup.setLngLat(e.lngLat).setHTML(`<div class="pop">${title("plane", "Emergency" + (p.callsign ? " · " + esc(p.callsign) : ""))}<div class="sub">${esc(p.model)}</div>
-      ${row("Operator", p.operator)}${row("Registration", p.reg)}${row("Took off from", p.origin)}${row("Departed", p.since)}
-      ${row("Altitude", Number(p.alt).toLocaleString() + " ft")}${row("Speed", mph(p.speed))}${row("Heading", heading(Number(p.track)))}
-      <small>Broadcasting 7700, the general emergency code. The yellow line is the path flown so far. <a href="https://globe.adsb.lol/?icao=${esc(p.id)}" target="_blank" rel="noopener">Follow live on adsb.lol</a></small></div>`).addTo(map);
-  });
-  map.on("click", "hazard", e => {
-    const p = e.features[0].properties;
-    popup.setLngLat(e.lngLat).setHTML(`<div class="pop">${title("h-" + p.kind, esc(p.title))}<div class="sub">${esc(p.detail || "")}</div></div>`).addTo(map);
-  });
-  map.on("click", "sideline", e => {
-    const p = e.features[0].properties, players = JSON.parse(p.players);
-    const rows = players.map(x => `<div><span class="${x.status === "Out" ? "out" : ""}">${esc(x.name)}${x.pos ? " · " + esc(x.pos) : ""}</span><span>${esc(x.status || x.practice)}${x.injury ? " · " + esc(x.injury) : ""}</span></div>`).join("");
-    popup.setLngLat(e.lngLat).setHTML(`<div class="pop">${title(p.league === "NBA" ? "basketball" : "football", esc(p.team))}<div class="sub">${players.length} on the report</div><div class="roster">${rows}</div><small>${esc(p.note)}</small></div>`).addTo(map);
-  });
-  map.on("click", "game", e => {
-    const p = e.features[0].properties;
-    popup.setLngLat(e.lngLat).setHTML(`<div class="pop">${title("g-" + p.state, p.state === "live" ? "Live now" : "Today")}<div class="sub">${esc(p.title)}</div>
-      ${row("League", p.league)}${row("Venue", p.venue)}${row("Start", p.start)}
-      <small>Athletic trainers from both teams are on the sideline for every snap and possession.</small></div>`).addTo(map);
-  });
-  map.on("click", "hospital", e => {
-    const p = e.features[0].properties;
-    popup.setLngLat(e.lngLat).setHTML(`<div class="pop">${title("hospital", esc(p.name))}<div class="sub">${esc(p.city)}</div>${row("Type", p.type)}<small>Has an emergency department (CMS).</small></div>`).addTo(map);
-  });
-  map.on("click", "alerts-fill", e => {
-    if (map.queryRenderedFeatures(e.point, { layers: ["hex", "area", "air", "emerg", "hazard", "sideline", "game", "hospital"] }).length) return;
-    const p = e.features[0].properties;
-    popup.setLngLat(e.lngLat).setHTML(`<div class="pop">${title("h-storm", esc(p.event))}<div class="sub">${esc(p.headline || "")}</div></div>`).addTo(map);
-  });
-  for (const l of ["hex", "area", "air", "emerg", "hazard", "sideline", "game", "hospital", "alerts-fill"]) {
-    map.on("mouseenter", l, () => map.getCanvas().style.cursor = "pointer");
-    map.on("mouseleave", l, () => map.getCanvas().style.cursor = "");
-  }
-}
-
-// ---------- data ----------
-function centroid(ring) {
-  let x = 0, y = 0;
-  for (const [a, b] of ring.slice(0, -1)) { x += a; y += b; }
-  return [x / (ring.length - 1), y / (ring.length - 1)];
-}
-function ago(iso) {
-  const m = Math.round((Date.now() - Date.parse(iso.replace("Z", ":00Z"))) / 60000);
-  return m < 1 ? "just now" : m < 60 ? `${m} min ago` : `${Math.round(m / 60)} hr ago`;
-}
-
-async function load() {
+async function refresh() {
   let d;
-  try {
-    const res = await fetch(DATA_URL + "?t=" + Date.now(), { cache: "no-store" });
-    if (!res.ok) throw new Error(res.status);
-    d = await res.json();
-  } catch (err) {
-    document.getElementById("updated").textContent = "Data unavailable, retrying";
-    return;
-  }
-  DATA = d;
-  const fc = x => x || empty;
-  map.getSource("dispatch").setData(d.dispatch);
-  map.getSource("dispatch-pts").setData({ type: "FeatureCollection", features: d.dispatch.features.map(f => ({
-    type: "Feature", properties: { n: f.properties.n },
-    geometry: { type: "Point", coordinates: f.geometry.type === "Polygon" ? centroid(f.geometry.coordinates[0]) : f.geometry.coordinates } })) });
-  map.getSource("alerts").setData(fc(d.alerts));
-  map.getSource("hazards").setData(fc(d.hazards));
-  map.getSource("tracks").setData(fc(d.tracks));
-  map.getSource("games").setData(fc(d.games));
-  const teams = (d.sideline && d.sideline.teams) || [];
-  map.getSource("sideline").setData({ type: "FeatureCollection", features: teams.map(t => ({
-    type: "Feature", geometry: { type: "Point", coordinates: [t.lon, t.lat] },
-    properties: { team: t.team, league: t.league || "NFL", n: t.players.length, note: t.note || "", players: JSON.stringify(t.players) } })) });
-  sourcesById = Object.fromEntries(d.sources.map(s => [s.id, s]));
-
-  const calls = d.dispatch.features.reduce((a, f) => a + f.properties.n, 0);
-  const athletes = teams.reduce((a, t) => a + t.players.length, 0);
-  const hz = fc(d.hazards).features.length;
-  const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
-  set("s-calls", calls.toLocaleString()); set("s-air", d.aircraft.features.length); set("s-athletes", athletes); set("s-hazards", hz);
-  set("n-dispatch", calls); set("n-air", d.aircraft.features.length); set("n-emerg", fc(d.emergency_aircraft).features.length);
-  set("n-sideline", athletes); set("n-games", fc(d.games).features.length); set("n-hazards", hz); set("n-alerts", d.alerts.features.length);
-  const ok = d.sources.filter(s => s.ok).length;
-  set("src-ok", `${ok} of ${d.sources.length} up`);
-  document.getElementById("sources").innerHTML = d.sources.map(s =>
-    `<li><span class="dot" style="background:var(${s.ok ? "--ok" : "--down"})"></span><span><a href="${esc(s.url)}" target="_blank" rel="noopener">${esc(s.name)}</a></span><span class="n">${s.ok ? s.count : "down"}</span></li>`).join("");
-  renderFeed(d);
-  renderUpdated();
+  try { d = await OS.getJson("live.json"); } catch (e) { set("navtime", "Data unavailable"); return; }
+  const t = OS.totals(d);
+  OS.countTo(document.getElementById("counter"), t.calls + t.air + t.emergencies, 1600);
+  set("b-calls", t.calls.toLocaleString()); set("b-air", t.air); set("b-emerg", t.emergencies);
+  OS.countTo(document.getElementById("c-calls"), t.calls); OS.countTo(document.getElementById("c-air"), t.air);
+  OS.countTo(document.getElementById("c-ath"), t.athletes); OS.countTo(document.getElementById("c-haz"), t.hazards);
+  set("c-cities", t.cities); set("c-out", t.out); set("t-src", t.sources);
+  OS.renderFeed(document.getElementById("feed"), OS.feedItems(d).filter(i => !i.icon.startsWith("g-")), null, 6);
+  const games = OS.feedItems(d).filter(i => i.icon.startsWith("g-"));
+  OS.renderFeed(document.getElementById("games"), games, null, 6);
+  if (!games.length) document.getElementById("games").innerHTML = `<li class="empty">No NFL or NBA games in the next 14 hours.</li>`;
+  OS.setStatus(d.generated);
 }
-
-function renderUpdated() {
-  if (!DATA) return;
-  const mins = (Date.now() - Date.parse(DATA.generated.replace("Z", ":00Z"))) / 60000;
-  document.getElementById("updated").textContent = `Updated ${ago(DATA.generated)}`;
-  document.getElementById("livedot").classList.toggle("stale", mins > 20);
-}
-setInterval(renderUpdated, 30_000);
-
-// "Happening now": the most notable things, tap to fly there
-function renderFeed(d) {
-  const items = [];
-  for (const f of (d.emergency_aircraft || empty).features) {
-    const p = f.properties;
-    items.push({ icon: "plane", tag: "live", text: `Aircraft emergency${p.callsign ? " · " + p.callsign : ""}`, sub: p.model || "", at: f.geometry.coordinates, zoom: 7 });
-  }
-  for (const f of (d.games || empty).features) {
-    const p = f.properties;
-    items.push({ icon: "g-" + p.state, tag: p.state === "live" ? "live" : "soon", text: p.title, sub: p.state === "live" ? `${p.league} · ATs on the sideline` : `${p.league} · ${p.start}`, at: f.geometry.coordinates, zoom: 10 });
-  }
-  for (const f of (d.hazards || empty).features) {
-    const p = f.properties;
-    if (p.kind === "hurricane" || p.kind === "storm-injury") items.push({ icon: "h-" + p.kind, tag: "live", text: p.title, sub: p.detail, at: f.geometry.coordinates, zoom: 6 });
-  }
-  const busiest = d.dispatch.features.filter(f => f.properties.place).sort((a, b) => b.properties.n - a.properties.n).slice(0, 3);
-  for (const f of busiest) {
-    const p = f.properties;
-    items.push({ icon: "d-" + p.top, tag: "live", text: `${p.n} active calls`, sub: p.place, at: f.geometry.coordinates, zoom: 9 });
-  }
-  const order = { live: 0, soon: 1 };
-  items.sort((a, b) => order[a.tag] - order[b.tag]);
-  const ul = document.getElementById("feed");
-  if (!items.length) { ul.innerHTML = `<li class="empty">Nothing notable right now.</li>`; return; }
-  ul.innerHTML = items.slice(0, 8).map((it, i) => `<li><button type="button" data-i="${i}"><img src="${iconUrl(it.icon)}" alt=""><span class="t">${esc(it.text)}<span>${esc(it.sub)}</span></span><span class="tag ${it.tag === "soon" ? "soon" : ""}">${it.tag === "soon" ? "Today" : "Live"}</span></button></li>`).join("");
-  ul.querySelectorAll("button").forEach(b => b.addEventListener("click", () => {
-    const it = items[Number(b.dataset.i)];
-    map.flyTo({ center: it.at, zoom: it.zoom, pitch: it.zoom >= 9 ? 50 : 0, speed: 1.4 });
-    if (matchMedia("(max-width: 640px)").matches) setSheet(false);
-  }));
-}
-
-// ---------- motion: aircraft keep moving on their last heading; live things pulse ----------
-function project([lon, lat], kt, deg, seconds) {
-  const km = kt * 1.852 * seconds / 3600, r = 6371, a = deg * Math.PI / 180, la = lat * Math.PI / 180, lo = lon * Math.PI / 180, dr = km / r;
-  const la2 = Math.asin(Math.sin(la) * Math.cos(dr) + Math.cos(la) * Math.sin(dr) * Math.cos(a));
-  const lo2 = lo + Math.atan2(Math.sin(a) * Math.sin(dr) * Math.cos(la), Math.cos(dr) - Math.sin(la) * Math.sin(la2));
-  return [lo2 * 180 / Math.PI, la2 * 180 / Math.PI];
-}
-function movedAircraft(fc, seconds) {
-  return { type: "FeatureCollection", features: (fc || empty).features.map(f => ({ ...f, geometry: { type: "Point",
-    coordinates: project(f.geometry.coordinates, Number(f.properties.speed) || 0, Number(f.properties.track) || 0, seconds) } })) };
-}
-let lastMove = 0;
-function animate(t = 0) {
-  if (DATA) {
-    const seconds = Math.min(600, Math.max(0, (Date.now() - Date.parse(DATA.generated.replace("Z", ":00Z"))) / 1000));
-    if (t - lastMove > 1000 || !lastMove) {
-      lastMove = t;
-      const heli = movedAircraft(DATA.aircraft, seconds), emerg = movedAircraft(DATA.emergency_aircraft, seconds);
-      map.getSource("aircraft").setData(heli);
-      map.getSource("emerg").setData(emerg);
-      const pulses = [
-        ...emerg.features.map(f => ({ type: "Feature", geometry: f.geometry, properties: { color: css("--emerg") } })),
-        ...((DATA.games || empty).features.filter(f => f.properties.state === "live").map(f => ({ type: "Feature", geometry: f.geometry, properties: { color: css("--live") } }))),
-        ...((DATA.hazards || empty).features.filter(f => ["hurricane", "storm-injury"].includes(f.properties.kind)).map(f => ({ type: "Feature", geometry: f.geometry, properties: { color: css("--fire") } }))),
-      ];
-      map.getSource("pulses").setData({ type: "FeatureCollection", features: pulses });
-    }
-    if (!reduceMotion) {
-      const k = (t % 2200) / 2200;
-      map.setPaintProperty("pulse", "circle-radius", 8 + k * 26);
-      map.setPaintProperty("pulse", "circle-stroke-opacity", 0.7 * (1 - k));
-    }
-  }
-  requestAnimationFrame(animate);
-}
-
-// ---------- controls ----------
-document.getElementById("locate").addEventListener("click", () => {
-  const btn = document.getElementById("locate");
-  if (!navigator.geolocation) { btn.textContent = "Location not available"; return; }
-  btn.textContent = "Finding you…";
-  navigator.geolocation.getCurrentPosition(
-    p => { map.flyTo({ center: [p.coords.longitude, p.coords.latitude], zoom: 11, pitch: 45 }); btn.textContent = "Show my area"; },
-    () => { btn.textContent = "Location blocked"; setTimeout(() => btn.textContent = "Show my area", 3000); },
-    { timeout: 10000 });
-});
-document.getElementById("tilt").addEventListener("click", e => {
-  const flat = map.getPitch() < 10;
-  map.easeTo({ pitch: flat ? 55 : 0, bearing: flat ? -12 : 0, zoom: flat ? Math.max(map.getZoom(), 9) : map.getZoom(), duration: 900 });
-  e.currentTarget.textContent = flat ? "Flat view" : "3D view";
-});
-function setSheet(open) {
-  document.getElementById("panel").classList.toggle("open", open);
-  const b = document.getElementById("toggle-sheet");
-  b.setAttribute("aria-expanded", String(open));
-  b.textContent = open ? "Hide details" : "Show details";
-}
-document.getElementById("toggle-sheet").addEventListener("click", () => setSheet(!document.getElementById("panel").classList.contains("open")));
+refresh();
+setInterval(refresh, 60_000);
 </script>
 </body>
 </html>

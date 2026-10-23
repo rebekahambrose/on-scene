@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Trends · On Scene</title>
+<meta name="description" content="How 911 activity, air ambulances, hazards and injury reports change hour by hour and day by day.">
+<meta name="theme-color" content="#0a1119">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="assets/style.css">
+<style>
+.range { display: inline-flex; border: 1px solid var(--line-2); border-radius: 10px; overflow: hidden; }
+.range button { all: unset; padding: 8px 14px; font: 600 14px var(--display); letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); cursor: pointer; }
+.range button[aria-pressed="true"] { background: rgba(242, 169, 59, 0.14); color: var(--accent); }
+.range button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.chart { position: relative; height: 280px; }
+.card h3 { margin-bottom: 4px; }
+.card .sub { color: var(--muted); font-size: 13.5px; margin: 0 0 12px; }
+.notice { border: 1px dashed var(--line-2); border-radius: 12px; padding: 14px 16px; color: var(--muted); }
+</style>
+</head>
+<body>
+<main class="wrap page">
+  <header class="section-head" style="margin:0">
+    <div><div class="eyebrow">Trends</div><h1>How the day moves</h1></div>
+    <div class="range" role="group" aria-label="Time range">
+      <button type="button" data-h="24" aria-pressed="true">24 hours</button><button type="button" data-h="168" aria-pressed="false">7 days</button><button type="button" data-h="720" aria-pressed="false">30 days</button>
+    </div>
+  </header>
+  <p class="notice" id="notice">Loading history…</p>
+  <section class="grid cols-2">
+    <div class="card"><h3>911 calls on the map</h3><p class="sub">Active or past-2-hour calls in tracked cities, by type, sampled each hour.</p><div class="chart"><canvas id="c-calls" aria-label="Chart of 911 calls by hour"></canvas></div></div>
+    <div class="card"><h3>Air ambulances flying</h3><p class="sub">Air-medical helicopters in the air across the US, sampled each hour.</p><div class="chart"><canvas id="c-air" aria-label="Chart of air ambulances by hour"></canvas></div></div>
+    <div class="card"><h3>Active hazards</h3><p class="sub">Wildfires, floods, storm reports, earthquakes and unhealthy air.</p><div class="chart"><canvas id="c-haz" aria-label="Chart of hazards by hour"></canvas></div></div>
+    <div class="card"><h3>Athletes on injury reports</h3><p class="sub">Players listed on the official NFL and NBA reports, by day.</p><div class="chart"><canvas id="c-ath" aria-label="Chart of athletes on injury reports by day"></canvas></div></div>
+  </section>
+</main>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="assets/common.js"></script>
+<script>
+OS.chrome("trends.html");
+OS.footer();
+const C = n => OS.css(n);
+Chart.defaults.color = C("--muted");
+Chart.defaults.font.family = "IBM Plex Sans, system-ui, sans-serif";
+Chart.defaults.borderColor = "rgba(120,150,175,0.12)";
+let H = null, range = 24;
+const charts = {};
+const GROUPS = [["medical", "Medical"], ["traffic", "Crash"], ["fire", "Fire"], ["rescue", "Rescue"], ["other", "Other"]];
+const HAZ = [["wildfire", "Wildfires", "--wildfire"], ["flood", "Floods", "--flood"], ["storm", "Storm reports", "--storm"], ["earthquake", "Earthquakes", "--quake"], ["air", "Bad air", "--airq"]];
+const label = k => { const d = new Date(k + ":00:00Z"); return range <= 24 ? d.toLocaleTimeString([], { hour: "numeric" }) : d.toLocaleDateString([], { month: "short", day: "numeric" }) + " " + d.toLocaleTimeString([], { hour: "numeric" }); };
+
+function draw(id, type, labels, datasets, stacked) {
+  if (charts[id]) charts[id].destroy();
+  charts[id] = new Chart(document.getElementById(id), {
+    type, data: { labels, datasets },
+    options: { maintainAspectRatio: false, animation: { duration: 500 }, interaction: { mode: "index", intersect: false },
+      plugins: { legend: { labels: { boxWidth: 10, boxHeight: 10, usePointStyle: true } } },
+      scales: { x: { stacked, ticks: { maxTicksLimit: 8, maxRotation: 0 } , grid: { display: false } }, y: { stacked, beginAtZero: true, ticks: { precision: 0 } } } },
+  });
+}
+
+function render() {
+  const keys = Object.keys(H.hours).sort().slice(-range), hrs = keys.map(k => H.hours[k]), labels = keys.map(label);
+  const n = Object.keys(H.hours).length;
+  document.getElementById("notice").textContent = n < 6
+    ? `On Scene started saving history on ${Object.keys(H.hours).sort()[0].slice(0, 10)}. Charts fill in hour by hour (${n} hour${n === 1 ? "" : "s"} so far).`
+    : `Showing ${Math.min(range, n)} of ${n} saved hours. Counts only; no locations or people are stored.`;
+  draw("c-calls", "bar", labels, GROUPS.map(([g, name]) => ({ label: name, data: hrs.map(h => (h.groups || {})[g] || 0), backgroundColor: C("--" + g), borderRadius: 2 })), true);
+  draw("c-air", "line", labels, [{ label: "Air ambulances", data: hrs.map(h => h.air), borderColor: C("--air"), backgroundColor: "rgba(255,92,147,0.15)", fill: true, tension: 0.3, pointRadius: 0 },
+                                  { label: "Aircraft emergencies", data: hrs.map(h => h.emergencies), borderColor: C("--emerg"), pointRadius: 0, tension: 0.3 }], false);
+  draw("c-haz", "line", labels, HAZ.map(([k, name, col]) => ({ label: name, data: hrs.map(h => (h.hazards || {})[k] || 0), borderColor: C(col), pointRadius: 0, tension: 0.3 })), false);
+  const days = Object.keys(H.days).sort().slice(-30);
+  draw("c-ath", "bar", days.map(d => new Date(d + "T12:00:00Z").toLocaleDateString([], { month: "short", day: "numeric" })), [
+    { label: "NFL", data: days.map(d => ((H.days[d].athletes) || {}).NFL || 0), backgroundColor: C("--sideline"), borderRadius: 2 },
+    { label: "NBA", data: days.map(d => ((H.days[d].athletes) || {}).NBA || 0), backgroundColor: "#9be3b8", borderRadius: 2 }], false);
+}
+
+document.querySelectorAll(".range button").forEach(b => b.addEventListener("click", () => {
+  document.querySelectorAll(".range button").forEach(x => x.setAttribute("aria-pressed", String(x === b)));
+  range = Number(b.dataset.h);
+  if (H) render();
+}));
+(async () => {
+  try { H = await OS.getJson("history.json"); } catch (e) { document.getElementById("notice").textContent = "History isn't available yet. It starts building once the bot runs."; return; }
+  try { const d = await OS.getJson("live.json"); OS.setStatus(d.generated); } catch (e) {}
+  render();
+})();
+</script>
+</body>
+</html>

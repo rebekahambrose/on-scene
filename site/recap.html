@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Daily Recap · On Scene</title>
+<meta name="description" content="A daily summary of emergency response, aircraft emergencies, hazards, games and injury reports across the US.">
+<meta name="theme-color" content="#0a1119">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="assets/style.css">
+<style>
+.summary { font-size: 19px; line-height: 1.65; max-width: 70ch; margin: 0; }
+.summary b { color: var(--accent-2); font-weight: 600; }
+.list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.list li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; padding: 7px 0; border-bottom: 1px solid var(--line); font-size: 14.5px; }
+.list li:last-child { border-bottom: 0; }
+.list span:last-child { font-family: var(--mono); color: var(--muted); }
+.daypick { max-width: 220px; }
+</style>
+</head>
+<body>
+<main class="wrap page">
+  <header class="section-head" style="margin:0">
+    <div><div class="eyebrow">Daily recap</div><h1 id="title">Today on scene</h1></div>
+    <select class="input daypick" id="day" aria-label="Pick a day"></select>
+  </header>
+  <p class="summary" id="summary">Loading…</p>
+  <section class="grid cols-4" id="stats"></section>
+  <section class="grid cols-3">
+    <div class="card"><h3>Busiest areas</h3><p class="muted" style="font-size:13px;margin:4px 0 10px">Most active 911 calls at one time (city, town or ZIP level).</p><ul class="list" id="places"></ul></div>
+    <div class="card"><h3>Aircraft emergencies</h3><p class="muted" style="font-size:13px;margin:4px 0 10px">Flights that broadcast the 7700 emergency code.</p><ul class="list" id="emerg"></ul></div>
+    <div class="card"><h3>Games with athletic trainers on the sideline</h3><p class="muted" style="font-size:13px;margin:4px 0 10px">NFL and NBA games that day.</p><ul class="list" id="games"></ul></div>
+  </section>
+  <p class="muted" style="font-size:13px">Recaps are built from the bot's samples through the day. Days with few samples (before the 5-minute timer is on) undercount. Counts only; no people or addresses.</p>
+</main>
+<script src="assets/common.js"></script>
+<script>
+OS.chrome("recap.html");
+OS.footer();
+const { esc } = OS;
+const KIND = { wildfire: "wildfires", flood: "flood gauges", storm: "storm reports", "storm-injury": "storm reports with injuries", earthquake: "earthquakes", air: "unhealthy-air areas", hurricane: "tropical systems" };
+let H;
+const nice = d => new Date(d + "T12:00:00Z").toLocaleDateString([], { weekday: "long", month: "long", day: "numeric", timeZone: "UTC" });
+const li = (a, b) => `<li><span>${a}</span><span>${b}</span></li>`;
+
+function render(day) {
+  const d = H.days[day];
+  const today = day === Object.keys(H.days).sort().slice(-1)[0];
+  document.getElementById("title").textContent = today ? "Today on scene" : nice(day);
+  const places = Object.entries(d.places || {}).sort((a, b) => b[1] - a[1]);
+  const emerg = Object.values(d.emergencies || {});
+  const games = Object.entries(d.games || {});
+  const haz = Object.entries(d.hazard_peaks || {}).filter(([, n]) => n > 0).sort((a, b) => b[1] - a[1]);
+  const parts = [`On ${nice(day)}, the busiest moment had <b>${d.peak_calls.toLocaleString()}</b> 911 calls on the map at once`];
+  if (places[0]) parts[0] += `, led by <b>${esc(places[0][0])}</b> with ${places[0][1]} active calls`;
+  parts[0] += ".";
+  parts.push(`Up to <b>${d.peak_air}</b> air ambulances were flying at the same time.`);
+  if (emerg.length) parts.push(`<b>${emerg.length}</b> aircraft declared an emergency${emerg[0].callsign ? `, including ${esc(emerg[0].callsign)}` : ""}.`);
+  if (haz.length) parts.push(`Hazards peaked at ${haz.slice(0, 3).map(([k, n]) => `<b>${n}</b> ${KIND[k] || k}`).join(", ")}.`);
+  if (games.length) parts.push(`<b>${games.length}</b> NFL and NBA games had athletic trainers on the sideline.`);
+  const ath = d.athletes || {};
+  if (ath.NFL || ath.NBA) parts.push(`Official injury reports listed <b>${(ath.NFL || 0) + (ath.NBA || 0)}</b> players (${(d.out || {}).NFL || 0} NFL and ${(d.out || {}).NBA || 0} NBA ruled out).`);
+  document.getElementById("summary").innerHTML = parts.join(" ");
+  const stat = (icon, v, t) => `<div class="card stat"><img class="ico" src="${OS.iconUrl(icon)}" alt=""><strong>${v}</strong><small>${t}</small></div>`;
+  document.getElementById("stats").innerHTML = stat("d-medical", d.peak_calls.toLocaleString(), "peak 911 calls on the map at once") + stat("heli", d.peak_air, "peak air ambulances flying")
+    + stat("plane", emerg.length, "aircraft emergencies") + stat("football", (ath.NFL || 0) + (ath.NBA || 0), "athletes on official injury reports");
+  document.getElementById("places").innerHTML = places.slice(0, 8).map(([p, n]) => li(esc(p), n)).join("") || `<li class="empty">No area-level sources reported.</li>`;
+  document.getElementById("emerg").innerHTML = emerg.map(e => li(esc([e.callsign, e.model].filter(Boolean).join(" · ")), esc(e.origin ? "from " + e.origin.replace(/ \(.*\)$/, "") : ""))).join("") || `<li class="empty">None recorded.</li>`;
+  document.getElementById("games").innerHTML = games.map(([t, g]) => li(esc(t), esc(g.league))).join("") || `<li class="empty">No games recorded.</li>`;
+}
+
+(async () => {
+  try { H = await OS.getJson("history.json"); } catch (e) { document.getElementById("summary").textContent = "No recap yet. History starts building once the bot runs."; return; }
+  try { const live = await OS.getJson("live.json"); OS.setStatus(live.generated); } catch (e) {}
+  const days = Object.keys(H.days).sort().reverse();
+  const sel = document.getElementById("day");
+  sel.innerHTML = days.map(d => `<option value="${d}">${nice(d)}</option>`).join("");
+  sel.addEventListener("change", () => render(sel.value));
+  render(days[0]);
+})();
+</script>
+</body>
+</html>

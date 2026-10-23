@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>About · On Scene</title>
+<meta name="description" content="How On Scene works, where its data comes from, and how it protects privacy.">
+<meta name="theme-color" content="#0a1119">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="assets/style.css">
+<style>
+.prose { max-width: 72ch; display: grid; gap: 14px; }
+.prose p { margin: 0; font-size: 16.5px; }
+.steps { counter-reset: s; list-style: none; padding: 0; margin: 0; display: grid; gap: 12px; }
+.steps li { counter-increment: s; display: grid; grid-template-columns: 38px minmax(0, 1fr); gap: 12px; align-items: start; }
+.steps li::before { content: counter(s); display: grid; place-items: center; width: 34px; height: 34px; border-radius: 50%; border: 1px solid var(--accent); color: var(--accent); font: 600 17px var(--display); }
+.rules li { margin-bottom: 8px; }
+.ok { color: var(--ok); } .down { color: var(--down); }
+</style>
+</head>
+<body>
+<main class="wrap page">
+  <header class="prose">
+    <div class="eyebrow">About</div>
+    <h1>Making emergency response visible</h1>
+    <p class="lede">People watch emergencies and sports constantly without seeing the professionals doing the work. On Scene puts them on a map: the calls they answer, the aircraft they fly, the hazards they face, and the athletic trainers on every sideline.</p>
+  </header>
+
+  <section class="grid cols-2">
+    <div class="card">
+      <h3>How it works</h3>
+      <ol class="steps" style="margin-top:14px">
+        <li><span>Every 5 minutes, a bot reads public feeds: city and county 911 dispatch pages, aircraft transponder data, weather and hazard services, and league injury reports.</span></li>
+        <li><span>Before anything is saved, it strips addresses, names, unit numbers and exact times, and groups calls into neighborhood hexes about 800 m across.</span></li>
+        <li><span>It publishes one small data file and an hourly history of counts. The site reads that file. Raw records are never stored.</span></li>
+      </ol>
+    </div>
+    <div class="card">
+      <h3>Privacy rules</h3>
+      <ul class="rules" style="margin:14px 0 0;padding-left:18px">
+        <li>No addresses, names or patient details, even when a source publishes them.</li>
+        <li>911 calls appear only as neighborhood hexes, or as town, ZIP or city totals.</li>
+        <li>Air-ambulance positions are rounded to about 1 km and hidden below 1,000 ft. Their takeoff and landing spots are never shown, because those can be emergency scenes.</li>
+        <li>Athletes: only what the leagues publish in their official injury reports. No guesses about anyone's condition.</li>
+      </ul>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="section-head"><h3>Every source, live status</h3><span class="muted" id="src-sum"></span></div>
+    <div class="table-wrap"><table><thead><tr><th>Source</th><th>Covers</th><th>Type</th><th>Status</th><th>Now</th></tr></thead><tbody id="src"></tbody></table></div>
+    <p class="muted" style="font-size:13px;margin-top:10px">Also used: OpenFreeMap and OpenStreetMap (map), FAA aircraft registry and hexdb.io (aircraft details), OpenSky Network (flight paths), OurAirports (airport names), Census Bureau (place names and geocoding), CMS (hospitals), Photon (place search). Aircraft positions from adsb.lol are licensed ODbL.</p>
+  </section>
+
+  <section class="prose">
+    <h2>Fine print</h2>
+    <p><b>Not an emergency service.</b> Nothing here is monitored. In an emergency, call 911.</p>
+    <p><b>Not medical advice.</b> Injury reports are shown exactly as leagues publish them, for public awareness.</p>
+    <p><b>What a dot means.</b> A 911 dispatch is a call for help, not a confirmed injury. Coverage is limited to places that publish their dispatch data; most of the country does not.</p>
+    <p><b>Public data only.</b> Everything comes from public sources, used as facts and credited with links. League injury data belongs to the leagues.</p>
+  </section>
+</main>
+<script src="assets/common.js"></script>
+<script>
+OS.chrome("about.html");
+OS.footer();
+(async () => {
+  let d;
+  try { d = await OS.getJson("live.json"); } catch (e) { return; }
+  OS.setStatus(d.generated);
+  const KIND = { dispatch: "911 dispatch", aircraft: "Aircraft", weather: "Weather", hazard: "Hazard", sports: "Sports" };
+  document.getElementById("src").innerHTML = d.sources.map(s => `<tr><td><a href="${OS.esc(s.url)}" target="_blank" rel="noopener">${OS.esc(s.name)}</a></td>
+    <td>${OS.esc(s.area)}</td><td>${KIND[s.kind] || s.kind}</td><td class="${s.ok ? "ok" : "down"}">${s.ok ? "Up" : "Down"}</td><td class="num">${s.ok ? s.count : "–"}</td></tr>`).join("");
+  const up = d.sources.filter(s => s.ok).length;
+  document.getElementById("src-sum").textContent = `${up} of ${d.sources.length} up · checked ${OS.ago(d.generated)}`;
+})();
+</script>
+</body>
+</html>

@@ -5,6 +5,7 @@ history.json keeps:
   days:  per-day peaks and highlights, last 90 days
 """
 from collections import Counter
+from zoneinfo import ZoneInfo
 
 KEEP_HOURS = 24 * 30
 KEEP_DAYS = 90
@@ -46,7 +47,8 @@ def update(history, out, now):
     for k in sorted(hours)[:-KEEP_HOURS]:
         del hours[k]
 
-    day = days.setdefault(now.strftime("%Y-%m-%d"), {"peak_calls": 0, "peak_air": 0, "places": {}, "emergencies": {},
+    # Days follow US Eastern time so "today" matches what most US visitors see.
+    day = days.setdefault(now.astimezone(ZoneInfo("America/New_York")).strftime("%Y-%m-%d"), {"peak_calls": 0, "peak_air": 0, "places": {}, "emergencies": {},
                                                     "hazard_peaks": {}, "games": {}, "samples": 0})
     day["samples"] += 1
     day["peak_calls"] = max(day["peak_calls"], snap["calls"])
