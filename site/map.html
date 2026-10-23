@@ -9,7 +9,7 @@
 <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.css">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
-<link rel="stylesheet" href="assets/style.css">
+<link rel="stylesheet" href="assets/style.css?v=3">
 <style>
 html, body { height: 100%; overflow: hidden; }
 #map { position: fixed; inset: calc(var(--nav-h) + env(safe-area-inset-top, 0px)) 0 0 0; }
@@ -122,7 +122,7 @@ details summary { cursor: pointer; font: 600 12.5px var(--display); letter-spaci
 </aside>
 
 <script src="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.js"></script>
-<script src="assets/common.js"></script>
+<script src="assets/common.js?v=3"></script>
 <script>
 const params = new URLSearchParams(location.search);
 const EMBED = params.get("embed") === "1";
@@ -166,7 +166,7 @@ const map = new maplibregl.Map({
   center: at.length === 3 && at.every(Number.isFinite) ? [at[0], at[1]] : [-96, 37.5],
   zoom: at.length === 3 && at.every(Number.isFinite) ? at[2] : (EMBED ? 2.4 : 2.9),
   minZoom: 1.5, maxZoom: 15.5, maxPitch: 70, interactive: !EMBED,
-  attributionControl: { compact: true, customAttribution: "Dispatch: city and county open data · Aircraft: <a href='https://www.adsb.lol/'>adsb.lol</a> (ODbL), OpenSky, hexdb.io, FAA · Hazards: NWS, NHC, NOAA, USGS, NIFC, EPA AirNow · Hospitals: CMS · Search: Photon/OSM" },
+  attributionControl: { compact: true, customAttribution: "Dispatch: city and county open data · Aircraft: <a href='https://www.adsb.lol/'>adsb.lol</a> (ODbL), OpenSky, hexdb.io, FAA · Hazards: NWS, NHC, NOAA, USGS, NIFC, EPA AirNow · Hospitals: CMS · Stations and AEDs: OpenStreetMap (ODbL) via Overpass · Search: Photon/OSM" },
 });
 map.setStyle("https://tiles.openfreemap.org/styles/dark", { transformStyle: (_, next) => retune(next) });
 if (!EMBED) map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), "top-right");
@@ -230,6 +230,12 @@ map.on("style.load", async () => {
               "text-field": ["step", ["zoom"], "", 11, ["get", "name"]], "text-size": 10.5, "text-font": ["Noto Sans Regular"], "text-offset": [0, 1.3], "text-anchor": "top", "text-optional": true },
     paint: { "text-color": css("--hospital"), "text-halo-color": "#0a1119", "text-halo-width": 1.2 } });
 
+  map.addSource("places", { type: "geojson", data: empty });
+  map.addLayer({ id: "place", type: "symbol", source: "places", minzoom: 12,
+    layout: { "icon-image": ["concat", "p-", ["get", "kind"]], "icon-size": ["match", ["get", "kind"], "aed", 0.5, 0.65], "icon-allow-overlap": false,
+              "text-field": ["step", ["zoom"], "", 14, ["get", "name"]], "text-size": 10.5, "text-font": ["Noto Sans Regular"], "text-offset": [0, 1.3], "text-anchor": "top", "text-optional": true },
+    paint: { "text-color": "#9fb2c0", "text-halo-color": "#0a1119", "text-halo-width": 1.2 } });
+
   map.addLayer({ id: "hazard", type: "symbol", source: "hazards",
     layout: { "icon-image": ["concat", "h-", ["get", "kind"]], "icon-allow-overlap": true,
               "icon-size": ["interpolate", ["linear"], ["zoom"],
@@ -272,6 +278,7 @@ const LAYERS = [
   { key: "hazards", label: "Hazards", sub: "Fires, floods, storms, quakes, air", icon: "h-wildfire", layers: ["hazard"] },
   { key: "alerts", label: "Weather warnings", sub: "National Weather Service", icon: "h-storm", layers: ["alerts-fill", "alerts-line"] },
   { key: "hospitals", label: "Hospitals", sub: "With emergency departments", icon: "hospital", layers: ["hospital"] },
+  { key: "places", label: "Fire, EMS stations and AEDs", sub: "Zoom into a neighborhood to see", icon: "p-aed", layers: ["place"] },
 ];
 const switchHtml = (id, icon, label, sub, countId) => `<label class="switch" for="${id}"><img src="${iconUrl(icon)}" alt=""><span class="lbl">${label}${sub ? `<small>${sub}</small>` : ""}</span>
   <span class="count" id="${countId}"></span><input type="checkbox" id="${id}" checked><span class="track"></span></label>`;
@@ -334,12 +341,19 @@ function wirePopups() {
     const p = e.features[0].properties;
     popup.setLngLat(e.lngLat).setHTML(`<div class="pop">${title("hospital", esc(p.name))}<div class="sub">${esc(p.city)}</div>${row("Type", p.type)}<small>Has an emergency department (CMS).</small></div>`).addTo(map);
   });
+  map.on("click", "place", e => {
+    const p = e.features[0].properties;
+    const what = { fire: "Fire station", ems: "Ambulance station", aed: "AED (defibrillator)" }[p.kind];
+    popup.setLngLat(e.lngLat).setHTML(`<div class="pop">${title("p-" + p.kind, esc(p.name || what))}<div class="sub">${what}</div>
+      ${row("Access", p.access)}${row("Hours", p.hours)}${row("Where", p.where)}
+      <small>From OpenStreetMap, mapped by volunteers. ${p.kind === "aed" ? "Missing an AED? Anyone can add it at openstreetmap.org." : ""}</small></div>`).addTo(map);
+  });
   map.on("click", "alerts-fill", e => {
-    if (map.queryRenderedFeatures(e.point, { layers: ["hex", "area", "air", "emerg", "hazard", "sideline", "game", "hospital"] }).length) return;
+    if (map.queryRenderedFeatures(e.point, { layers: ["hex", "area", "air", "emerg", "hazard", "sideline", "game", "hospital", "place"] }).length) return;
     const p = e.features[0].properties;
     popup.setLngLat(e.lngLat).setHTML(`<div class="pop">${title("h-storm", esc(p.event))}<div class="sub">${esc(p.headline || "")}</div></div>`).addTo(map);
   });
-  for (const l of ["hex", "area", "air", "emerg", "hazard", "sideline", "game", "hospital", "alerts-fill"]) {
+  for (const l of ["hex", "area", "air", "emerg", "hazard", "sideline", "game", "hospital", "place", "alerts-fill"]) {
     map.on("mouseenter", l, () => map.getCanvas().style.cursor = "pointer");
     map.on("mouseleave", l, () => map.getCanvas().style.cursor = "");
   }
@@ -451,6 +465,31 @@ function animate(t = 0) {
   }
   requestAnimationFrame(animate);
 }
+
+// ---------- fire stations, ambulance stations and AEDs (OpenStreetMap via Overpass, loaded for the visible area) ----------
+const placeCache = new Map();
+let placeTimer;
+async function loadPlaces() {
+  if (EMBED || !map.getLayer("place") || map.getZoom() < 12 || map.getLayoutProperty("place", "visibility") === "none") return;
+  const b = map.getBounds(), r = v => v.toFixed(2);
+  const key = [r(b.getSouth()), r(b.getWest()), r(b.getNorth()), r(b.getEast())].join(",");
+  if (!placeCache.has(key)) {
+    const q = `[out:json][timeout:20];(nwr["amenity"="fire_station"](${key});nwr["emergency"="ambulance_station"](${key});node["emergency"="defibrillator"](${key}););out center 400;`;
+    try {
+      const res = await fetch("https://overpass-api.de/api/interpreter", { method: "POST", body: "data=" + encodeURIComponent(q), headers: { "Content-Type": "application/x-www-form-urlencoded" } });
+      const j = await res.json();
+      placeCache.set(key, j.elements.map(el => {
+        const t = el.tags || {}, lat = el.lat ?? (el.center && el.center.lat), lon = el.lon ?? (el.center && el.center.lon);
+        const kind = t.emergency === "defibrillator" ? "aed" : t.amenity === "fire_station" ? "fire" : "ems";
+        return { type: "Feature", geometry: { type: "Point", coordinates: [lon, lat] },
+                 properties: { kind, name: t.name || "", access: t.access || "", hours: t.opening_hours || "", where: t["defibrillator:location"] || t["addr:street"] || "" } };
+      }).filter(f => f.geometry.coordinates[0] != null));
+    } catch (e) { return; }
+  }
+  const all = [...placeCache.values()].flat();
+  map.getSource("places").setData({ type: "FeatureCollection", features: all });
+}
+map.on("moveend", () => { clearTimeout(placeTimer); placeTimer = setTimeout(loadPlaces, 700); });
 
 // ---------- search (Photon, built on OpenStreetMap) ----------
 let searchTimer;

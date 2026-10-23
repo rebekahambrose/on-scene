@@ -23,6 +23,7 @@ COUNTIES = {
     "42071": "Lancaster County, PA",
     "42043": "Dauphin County, PA",
     "42091": "Montgomery County, PA",
+    "36065": "Oneida County, NY",
 }
 PLACE_STATES = {"CA"}
 # Center points for sources that report a whole city or county.

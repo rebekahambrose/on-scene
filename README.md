@@ -27,7 +27,10 @@ A live map of emergency response across the US, built only from public data.
 | Dispatch | Nashville Fire Dept (ArcGIS) | active calls | ZIP code |
 | Dispatch | Lancaster County-Wide Communications RSS | active calls | township |
 | Dispatch | Dauphin County WebCAD | active calls | township |
-| Dispatch | Montgomery County PA WebCAD RSS | active calls | township |
+| Dispatch | Montgomery County PA active CAD incidents (ArcGIS) | active calls | hex |
+| Dispatch | Las Vegas Metro Police traffic calls (injury crashes only) | past 2 hours | hex |
+| Dispatch | Oneida County NY 911 live activity (EMS, fire, crashes) | active calls | town |
+| Context | Fire stations, ambulance stations, AEDs (OpenStreetMap via Overpass, loaded in the browser when zoomed in) | live | location |
 | Dispatch | Hernando County Sheriff (Fire Rescue calls) | active calls | county |
 | Dispatch | California Highway Patrol, all 25 dispatch centers (injury crashes) | active incidents | city of the CHP area office |
 | Sideline | NBA official injury report PDF (official.nba.com) | every 15 min on game days | team arena |

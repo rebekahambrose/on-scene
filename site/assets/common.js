@@ -30,6 +30,8 @@
     waves: `<path d="M12 26c5-5 10 5 15 0s10 5 15 0 7 3 10 2M12 36c5-5 10 5 15 0s10 5 15 0 7 3 10 2M12 46c5-5 10 5 15 0s10 5 15 0 7 3 10 2" fill="none" stroke="#fff" stroke-width="3.6" stroke-linecap="round"/>`,
     haze: `<path d="M14 24h26M14 32h36M14 40h22M44 40h6M20 48h22" fill="none" stroke="#fff" stroke-width="4" stroke-linecap="round"/>`,
     hospital: `<rect x="17" y="17" width="30" height="30" rx="4"/><path d="M29 22h6v7h7v6h-7v7h-6v-7h-7v-6h7z" fill="C"/>`,
+    station: `<path d="M14 30 32 15l18 15v19H14z"/><path d="M25 49V37h14v12z" fill="C"/><path d="M30 39h4M30 43h4" stroke="#fff" stroke-width="1.6"/>`,
+    aed: `<path d="M32 50S14 39 14 26c0-7 5-11 10-11 4 0 6.5 2.5 8 5 1.5-2.5 4-5 8-5 5 0 10 4 10 11 0 13-18 24-18 24z"/><path d="M34 20 27 32h6l-3 11 9-14h-6l3-9z" fill="C"/>`,
   };
   const ICONS = {
     "d-medical": ["ambulance", "--medical"], "d-traffic": ["car", "--traffic"], "d-fire": ["flame", "--fire"],
@@ -39,6 +41,7 @@
     "h-wildfire": ["flame", "--wildfire"], "h-earthquake": ["quake", "--quake"], "h-storm": ["bolt", "--storm"],
     "h-storm-injury": ["bolt", "--fire"], "h-hurricane": ["swirl", "--hurricane"], "h-flood": ["waves", "--flood"], "h-air": ["haze", "--airq"],
     hospital: ["hospital", "--hospital"], alert: ["bolt", "--fire"],
+    "p-fire": ["station", "--fire"], "p-ems": ["station", "--medical"], "p-aed": ["aed", "--ok"],
   };
   function iconSvg(name) {
     const [glyph, colorVar] = ICONS[name], color = css(colorVar);

@@ -106,16 +106,57 @@ def dauphin(now):
 
 
 def montgomery_pa(now):
-    # RSS items: title "EMS: FALL", description "STREET & CROSS; TOWNSHIP; time-Station".
-    rss = get("https://webapp07.montcopa.org/eoc/cadinfo/livecadrss.asp", accept="application/rss+xml")
+    # The county's active-incident map layer carries coordinates (at the intersection), so these snap to hexes.
+    url = ("https://gis.montcopa.org/arcgis/rest/services/Hosted/Montgomery_County_Active_CAD_Incidents_View/"
+           "FeatureServer/0/query?where=1%3D1&outFields=type,incidentsubtype,lat,lon&f=json")
     out = []
-    for item in re.findall(r"<item>(.*?)</item>", rss, re.S):
-        title = unescape(re.search(r"<title>(.*?)</title>", item, re.S).group(1))
-        desc = unescape(re.search(r"<description>(.*?)</description>", item, re.S).group(1)).split(";")
-        if len(desc) > 1:
-            p = _place(desc[1], "PA")
-            if p:
-                out.append((*p, group(title)))
+    for f in get_json(url)["features"]:
+        a = f["attributes"]
+        try:
+            lat, lon = float(a["lat"]), float(a["lon"])
+        except (TypeError, ValueError):
+            continue
+        kind = (a.get("type") or "").lower()
+        g = "traffic" if kind == "traffic" else "medical" if kind == "ems" else group(f"{a.get('type')} {a.get('incidentsubtype') or ''}")
+        out.append((lat, lon, g))
+    return out
+
+
+def las_vegas_crashes(now):
+    # Las Vegas Metro Police traffic calls; only crashes with injuries, from the past 2 hours.
+    # The layer already holds only current calls; the time check below keeps it to the past 2 hours.
+    since = int((now - WINDOW).timestamp() * 1000)
+    url = ("https://services.arcgis.com/jjSk6t82vIntwDbs/arcgis/rest/services/LVMPD_Traffic_CFS/FeatureServer/6/query?"
+           + urllib.parse.urlencode({"where": "1=1", "outFields": "event_description,event_date,latitude,longitude", "f": "json"}))
+    out = []
+    for f in get_json(url).get("features", []):
+        a = f["attributes"]
+        desc = (a.get("event_description") or "").upper()
+        if (a.get("event_date") or 0) < since:
+            continue
+        if ("INJUR" in desc or "FATAL" in desc) and a.get("latitude"):
+            out.append((float(a["latitude"]), float(a["longitude"]), "traffic"))
+    return out
+
+
+MPDS = re.compile(r"^\d{1,2}[A-EΩO]\d{2}")  # medical dispatch codes like "21B01-HEMORRHAGE"
+
+
+def oneida_ny(now):
+    # Oneida County 911 live activity: keep EMS (medical dispatch codes), fire and crash calls; counted by town.
+    html = get("https://oneidacountyny.gov/departments/emergency-services/911-center-live-activity-feed/", accept="text/html")
+    out = []
+    for cells in _table_rows(html):
+        if len(cells) < 3 or not re.match(r"\d{4}-\d+", cells[0]):
+            continue
+        what = re.sub(r"^(In Progress|Dispatched|Pending|Enroute|On Scene|Arrived)\s+", "", cells[1], flags=re.I)
+        g = group(what)
+        if not (MPDS.match(what) or g in ("fire", "traffic", "rescue")) or "DISABLED" in what.upper():
+            continue
+        town = re.sub(r"\s*View On Map.*$", "", cells[2]).split(",")[-1].strip()
+        p = _place(town, "NY")
+        if p:
+            out.append((*p, "medical" if MPDS.match(what) and g == "other" else g))
     return out
 
 
@@ -248,7 +289,9 @@ SOURCES = [
     ("san-diego", san_diego, "San Diego Fire-Rescue", "San Diego, CA", "area", "https://webapps.sandiego.gov/sdfiredispatch/"),
     ("lancaster", lancaster, "Lancaster County-Wide Communications", "Lancaster County, PA", "area", "https://www.lcwc911.us/live-incident-list"),
     ("dauphin", dauphin, "Dauphin County 911", "Dauphin County, PA", "area", "https://dpswebcad.dauphincounty.gov/webcad/"),
-    ("montgomery-pa", montgomery_pa, "Montgomery County PA Public Safety", "Montgomery County, PA", "area", "https://www.montgomerycountypa.gov/departments/department-public-safety/webcad-active-incidents"),
+    ("montgomery-pa", montgomery_pa, "Montgomery County PA Public Safety", "Montgomery County, PA", "hex", "https://www.montgomerycountypa.gov/departments/department-public-safety/webcad-active-incidents"),
+    ("las-vegas-crashes", las_vegas_crashes, "Las Vegas Metro Police (injury crashes)", "Las Vegas, NV", "hex", "https://services.arcgis.com/jjSk6t82vIntwDbs/arcgis/rest/services/LVMPD_Traffic_CFS/FeatureServer/6"),
+    ("oneida-ny", oneida_ny, "Oneida County 911 (EMS, fire, crashes)", "Oneida County, NY", "area", "https://oneidacountyny.gov/departments/emergency-services/911-center-live-activity-feed/"),
     ("nashville", nashville, "Nashville Fire Department", "Nashville, TN", "area", "https://datanashvillegov-nashville.hub.arcgis.com/datasets/nashville-fire-department-active-incidents/about"),
     ("houston", houston, "City of Houston Active Incidents", "Houston, TX", "area", "https://www.houstontx.gov/activeincidents/"),
     ("milwaukee", milwaukee, "Milwaukee Fire Department", "Milwaukee, WI", "hex", "https://itmdapps.milwaukee.gov/MFDCallData/"),
